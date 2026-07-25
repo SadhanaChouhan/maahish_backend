@@ -1,0 +1,31 @@
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/maahish_db
+    username: root
+    password: rootroot
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    show-sql: true
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME:chouhansadhana17@gmail.com}
+    password: ${MAIL_PASSWORD:pkgf vhrb zzwf hxnp}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+maahish:
+  razorpay:
+    key-id: rzp_test_TE68nc2EBezGW6
+    key-secret: plQyBTUeQKAWANQPphsmGRp0
+    currency: INR
+
+cloudinary:
+  cloud-name: ${CLOUDINARY_CLOUD_NAME:sjgpyjbh}
+  api-key: ${CLOUDINARY_API_KEY:961554174281855}
+  api-secret: ${CLOUDINARY_API_SECRET:iX39EDS-HNz1KZUbsatNxmhqs_E}
+  folder: maahish/products
