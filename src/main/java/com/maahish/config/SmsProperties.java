@@ -14,6 +14,6 @@ public class SmsProperties {
     private boolean enabled = true;
     private String provider = "console";
     private String apiKey = "";
-    private String senderId = "MAAHSH";
+    private String senderId = "MAAHISH";
     private String countryCode = "91";
 }

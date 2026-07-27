@@ -1,0 +1,15 @@
+package com.maahish.returns.enums;
+
+public enum ReturnRequestStatus {
+    RETURN_REQUESTED,
+    RETURN_APPROVED,
+    RETURN_REJECTED,
+    CUSTOMER_SHIPPED,
+    PARCEL_RECEIVED,
+    QUALITY_CHECK,
+    REFUND_INITIATED,
+    REFUND_COMPLETED,
+    EXCHANGE_PROCESSING,
+    EXCHANGE_SHIPPED,
+    EXCHANGE_COMPLETED
+}

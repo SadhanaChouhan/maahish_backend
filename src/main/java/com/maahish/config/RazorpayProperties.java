@@ -15,4 +15,6 @@ public class RazorpayProperties {
     private String keySecret;
     private String webhookSecret;
     private String currency = "INR";
+    /** When true, reject webhooks if webhook secret is missing or signature is invalid. */
+    private boolean requireWebhookSecret = false;
 }

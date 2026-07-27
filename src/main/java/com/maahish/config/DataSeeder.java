@@ -1,18 +1,22 @@
 package com.maahish.config;
 
-import com.maahish.entity.Category;
-import com.maahish.entity.Product;
-import com.maahish.entity.ProductImage;
-import com.maahish.enums.ProductStatus;
-import com.maahish.repository.CategoryRepository;
-import com.maahish.repository.ProductRepository;
-import com.maahish.util.SlugUtil;
+import com.maahish.catalog.entity.Category;
+import com.maahish.catalog.entity.FabricType;
+import com.maahish.catalog.entity.Product;
+import com.maahish.catalog.entity.ProductImage;
+import com.maahish.catalog.enums.ProductStatus;
+import com.maahish.catalog.repository.CategoryRepository;
+import com.maahish.catalog.repository.FabricTypeRepository;
+import com.maahish.catalog.repository.ProductRepository;
+import com.maahish.common.util.SlugUtil;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.annotation.Order;
 
 import java.math.BigDecimal;
 
@@ -23,39 +27,34 @@ import java.math.BigDecimal;
 public class DataSeeder {
 
     private final CategoryRepository categoryRepository;
+    private final FabricTypeRepository fabricTypeRepository;
     private final ProductRepository productRepository;
 
     @Bean
-    CommandLineRunner seedData() {
+    @Order(3)
+    CommandLineRunner seedSampleProduct() {
         return args -> {
             if (productRepository.count() > 0) {
-                log.info("Database already seeded, skipping sample data");
+                log.info("Database already has products, skipping sample product seed");
                 return;
             }
 
-            log.info("Seeding sample categories and products...");
-            Category maheshwari = categoryRepository.save(Category.builder()
-                    .name("Maheshwari Sarees")
-                    .slug("maheshwari-sarees")
-                    .description("Authentic handwoven Maheshwari sarees")
-                    .active(true)
-                    .build());
+            Category category = categoryRepository.findBySlug("maheshwari-sarees").orElse(null);
+            FabricType fabricType = fabricTypeRepository.findByNameIgnoreCase("Cotton Silk").orElse(null);
+            if (category == null || fabricType == null) {
+                log.warn("Skipping sample product seed — master data not ready (category={}, fabricType={})",
+                        category != null, fabricType != null);
+                return;
+            }
 
-            Category cottonSilk = categoryRepository.save(Category.builder()
-                    .name("Cotton Silk")
-                    .slug("cotton-silk")
-                    .description("Premium cotton silk blends")
-                    .active(true)
-                    .build());
-
-            seedProduct("Maheshwari Gold Border Saree", maheshwari, "Cotton Silk", "Gold",
+            log.info("Seeding sample product...");
+            seedProduct("Maheshwari Gold Border Saree", category, fabricType, "Gold",
                     new BigDecimal("4999"), new BigDecimal("10"), true, true);
-
             log.info("Seeded {} products", productRepository.count());
         };
     }
 
-    private void seedProduct(String name, Category category, String fabric, String color,
+    private void seedProduct(String name, Category category, FabricType fabricType, String color,
                              BigDecimal price, BigDecimal discount, boolean bestSeller, boolean latest) {
         BigDecimal selling = price.subtract(price.multiply(discount).divide(new BigDecimal("100")));
         String slug = SlugUtil.toSlug(name);
@@ -71,7 +70,7 @@ public class DataSeeder {
                 .sellingPrice(selling)
                 .stock(25)
                 .category(category)
-                .fabric(fabric)
+                .fabricType(fabricType)
                 .color(color)
                 .occasion("Festival")
                 .rating(new BigDecimal("4.5"))

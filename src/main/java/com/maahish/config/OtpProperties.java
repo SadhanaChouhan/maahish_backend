@@ -13,4 +13,7 @@ public class OtpProperties {
 
     private int expirationMinutes;
     private int length;
+    private int maxVerifyAttempts = 5;
+    private int resendCooldownSeconds = 60;
+    private int maxSendsPerHour = 5;
 }

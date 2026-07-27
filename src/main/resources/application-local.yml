@@ -5,7 +5,11 @@ spring:
     password: rootroot
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
+    hibernate:
+      ddl-auto: update
     show-sql: true
+  flyway:
+    enabled: false
   mail:
     host: smtp.gmail.com
     port: 587
@@ -19,9 +23,14 @@ spring:
             enable: true
 
 maahish:
+  jwt:
+    secret: ${JWT_SECRET:maahish-dev-secret-change-in-production-min-256-bits-long-key-here}
+  cors:
+    allowed-origins: http://localhost:5173,http://localhost:3000,http://localhost:5176
   razorpay:
     key-id: rzp_test_TE68nc2EBezGW6
     key-secret: plQyBTUeQKAWANQPphsmGRp0
+    require-webhook-secret: false
     currency: INR
 
 cloudinary:

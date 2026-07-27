@@ -1,0 +1,37 @@
+# Maven
+backend/target/
+backend/.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Env
+.env
+.env.local
+application-local.yml
+application-prod.yml
+application.yml
+application-example.yml
+# Uploads
+uploads/
+
+# Node (frontend)
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+
+# Build
+*.class
+*.jar
+!backend/.mvn/wrapper/maven-wrapper.jar

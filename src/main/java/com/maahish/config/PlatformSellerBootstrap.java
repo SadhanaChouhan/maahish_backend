@@ -1,15 +1,15 @@
 package com.maahish.config;
 
-import com.maahish.constants.AppConstants;
-import com.maahish.entity.Product;
-import com.maahish.entity.Seller;
-import com.maahish.entity.User;
-import com.maahish.enums.SellerStatus;
-import com.maahish.enums.UserRole;
-import com.maahish.enums.UserStatus;
-import com.maahish.repository.ProductRepository;
-import com.maahish.repository.SellerRepository;
-import com.maahish.repository.UserRepository;
+import com.maahish.common.constants.AppConstants;
+import com.maahish.catalog.repository.ProductRepository;
+import com.maahish.seller.entity.Seller;
+import com.maahish.seller.repository.SellerRepository;
+import com.maahish.seller.enums.SellerStatus;
+import com.maahish.user.entity.User;
+import com.maahish.user.repository.UserRepository;
+import com.maahish.common.enums.UserRole;
+import com.maahish.common.enums.UserStatus;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;

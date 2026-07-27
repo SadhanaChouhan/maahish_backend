@@ -1,12 +1,16 @@
 package com.maahish.config;
 
-import com.maahish.entity.CommissionRule;
-import com.maahish.repository.CommissionRuleRepository;
+import com.maahish.catalog.entity.FabricType;
+import com.maahish.catalog.repository.FabricTypeRepository;
+import com.maahish.settlement.entity.CommissionRule;
+import com.maahish.settlement.repository.CommissionRuleRepository;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 
 import java.math.BigDecimal;
 
@@ -16,8 +20,10 @@ import java.math.BigDecimal;
 public class CommissionRuleSeeder {
 
     private final CommissionRuleRepository commissionRuleRepository;
+    private final FabricTypeRepository fabricTypeRepository;
 
     @Bean
+    @Order(2)
     CommandLineRunner seedCommissionRules() {
         return args -> {
             if (commissionRuleRepository.count() > 0) {
@@ -25,16 +31,22 @@ public class CommissionRuleSeeder {
             }
 
             log.info("Seeding default commission rules...");
-            seed("Cotton Saree", " Pure Cotton", new BigDecimal("8.00"));
+            seed("Pure Cotton Saree", "Pure Cotton", new BigDecimal("8.00"));
             seed("Cotton Silk Saree", "Cotton Silk", new BigDecimal("10.00"));
             seed("Pure Silk Saree", "Pure Silk", new BigDecimal("12.00"));
         };
     }
 
-    private void seed(String name, String fabric, BigDecimal percentage) {
+    private void seed(String name, String fabricTypeName, BigDecimal percentage) {
+        FabricType fabricType = fabricTypeRepository.findByNameIgnoreCase(fabricTypeName.trim())
+                .orElse(null);
+        if (fabricType == null) {
+            log.warn("Skipping commission rule '{}' — fabric type '{}' not found", name, fabricTypeName);
+            return;
+        }
         commissionRuleRepository.save(CommissionRule.builder()
                 .name(name)
-                .fabric(fabric)
+                .fabricType(fabricType)
                 .commissionPercentage(percentage)
                 .enabled(true)
                 .build());

@@ -1,11 +1,12 @@
 package com.maahish.config;
 
-import com.maahish.entity.Cart;
-import com.maahish.entity.User;
-import com.maahish.enums.UserRole;
-import com.maahish.enums.UserStatus;
-import com.maahish.repository.CartRepository;
-import com.maahish.repository.UserRepository;
+import com.maahish.cart.entity.Cart;
+import com.maahish.cart.repository.CartRepository;
+import com.maahish.user.entity.User;
+import com.maahish.user.repository.UserRepository;
+import com.maahish.common.enums.UserRole;
+import com.maahish.common.enums.UserStatus;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
