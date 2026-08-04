@@ -19,6 +19,8 @@ public interface OrderService {
 
     PaymentResponse initiatePayment(Long userId, CheckoutRequest request);
 
+    PaymentResponse resumePayment(Long userId, String checkoutReference);
+
     OrderResponse verifyPayment(Long userId, VerifyPaymentRequest request);
 
     void processRazorpayWebhook(String payload, String signature);
@@ -27,7 +29,7 @@ public interface OrderService {
 
     OrderResponse getOrderByNumber(Long userId, String orderNumber);
 
-    OrderTrackingResponse trackOrder(OrderTrackRequest request);
+    OrderTrackingResponse trackOrder(OrderTrackRequest request, String clientIp);
 
     PageResponse<OrderResponse> getAllOrders(OrderStatus status, int page, int size);
 

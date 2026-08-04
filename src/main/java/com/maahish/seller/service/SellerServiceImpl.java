@@ -301,10 +301,7 @@ public class SellerServiceImpl implements SellerService {
         Product product = getOwnedProduct(seller, productId);
         product.setStock(request.getStock());
         if (request.getStock() <= 0) {
-            product.setStatus(ProductStatus.OUT_OF_STOCK);
             marketplaceNotificationService.notifySellerOutOfStock(seller, product.getName(), product.getId());
-        } else if (product.getStatus() == ProductStatus.OUT_OF_STOCK) {
-            product.setStatus(ProductStatus.ACTIVE);
         }
         productRepository.save(product);
         return productService.getProductById(product.getId());
@@ -471,7 +468,7 @@ public class SellerServiceImpl implements SellerService {
         } else if (newStatus == SellerStatus.REJECTED) {
             marketplaceNotificationService.notifySellerRejected(seller, request.getRejectionReason());
         } else if (newStatus == SellerStatus.SUSPENDED || newStatus == SellerStatus.INACTIVE) {
-            marketplaceNotificationService.notifySellerDeactivated(seller, newStatus);
+            marketplaceNotificationService.notifySellerDeactivated(seller, newStatus, request.getRejectionReason());
         }
 
         sellerRepository.save(seller);

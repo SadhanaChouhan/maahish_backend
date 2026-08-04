@@ -1,169 +1,150 @@
 package com.maahish.infrastructure.mail.service;
 
+import com.maahish.common.constants.AppConstants;
+import com.maahish.common.exception.MailDeliveryException;
 import com.maahish.order.entity.Order;
-import com.maahish.seller.entity.Seller;
 
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+
+import java.time.format.DateTimeFormatter;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class MailService {
 
+    private static final DateTimeFormatter ORDER_DATE_FORMAT =
+            DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a");
+
     private final JavaMailSender mailSender;
+    private final EmailTemplateService emailTemplateService;
 
-    @Async
     public void sendOtpEmail(String to, String otp, String purpose) {
-        try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setTo(to);
-            message.setSubject("Maahish - Your OTP for " + purpose);
-            message.setText("""
-                    Dear Customer,
-
-                    Your OTP for %s is: %s
-
-                    This OTP is valid for 10 minutes. Do not share it with anyone.
-
-                    Warm regards,
-                    Team Maahish
-                    """.formatted(purpose, otp));
-            mailSender.send(message);
-            log.info("OTP email sent to {}", to);
-        } catch (Exception ex) {
-            log.error("Failed to send OTP email to {}: {}", to, ex.getMessage());
-            log.debug("OTP for {} (dev fallback): {}", to, otp);
-        }
+        sendHtmlRequired(to, AppConstants.BRAND_NAME + " - Your OTP for " + purpose,
+                emailTemplateService.otpVerification(otp, purpose));
     }
 
     @Async
     public void sendWelcomeEmail(String to, String name) {
-        try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setTo(to);
-            message.setSubject("Welcome to Maahish");
-            message.setText("""
-                    Dear %s,
-
-                    Welcome to Maahish! Your account has been verified successfully.
-
-                    Explore our collection of authentic Maheshwari Cotton Silk Sarees.
-
-                    Warm regards,
-                    Team Maahish
-                    """.formatted(name));
-            mailSender.send(message);
-        } catch (Exception ex) {
-            log.warn("Failed to send welcome email: {}", ex.getMessage());
-        }
+        sendHtml(to, "Welcome to " + AppConstants.BRAND_NAME,
+                emailTemplateService.welcomeEmail(name));
     }
 
     @Async
     public void sendSellerRegistrationConfirmation(String to, String businessName) {
-        try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setTo(to);
-            message.setSubject("Maahish Seller Registration Received");
-            message.setText("""
-                    Dear %s,
+        sendHtml(to, AppConstants.BRAND_NAME + " Seller Registration Received",
+                emailTemplateService.sellerRegistrationReceived(businessName));
+    }
 
-                    Thank you for registering as a seller on Maahish.
-
-                    Your application is currently under review. Our admin team will verify your details and notify you once your account is approved.
-
-                    You will not be able to log in until your seller account is approved.
-
-                    Warm regards,
-                    Team Maahish
-                    """.formatted(businessName));
-            mailSender.send(message);
-        } catch (Exception ex) {
-            log.warn("Failed to send seller registration email: {}", ex.getMessage());
-        }
+    @Async
+    public void sendAdminNewSellerEmail(String to, String ownerName, String businessName,
+                                        String registrationDate, String sellerUrl) {
+        sendHtml(to, AppConstants.BRAND_NAME + " - New Seller Registration",
+                emailTemplateService.adminNewSeller(ownerName, businessName, registrationDate, sellerUrl));
     }
 
     @Async
     public void sendSellerApprovalEmail(String to, String businessName) {
-        try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setTo(to);
-            message.setSubject("Maahish Seller Account Approved");
-            message.setText("""
-                    Dear %s,
-
-                    Congratulations! Your Maahish seller account has been approved.
-
-                    You can now log in and access your seller dashboard to add products and manage orders.
-
-                    Warm regards,
-                    Team Maahish
-                    """.formatted(businessName));
-            mailSender.send(message);
-        } catch (Exception ex) {
-            log.warn("Failed to send seller approval email: {}", ex.getMessage());
-        }
+        sendHtml(to, AppConstants.BRAND_NAME + " Seller Account Approved",
+                emailTemplateService.sellerApproved(businessName));
     }
 
     @Async
     public void sendSellerRejectionEmail(String to, String businessName, String reason) {
-        try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setTo(to);
-            message.setSubject("Maahish Seller Registration Update");
-            message.setText("""
-                    Dear %s,
+        sendHtml(to, AppConstants.BRAND_NAME + " Seller Registration Update",
+                emailTemplateService.sellerRejected(businessName, reason));
+    }
 
-                    We regret to inform you that your seller registration on Maahish could not be approved at this time.
+    @Async
+    public void sendSellerDeactivationEmail(String to, String businessName, String statusLabel, String reason) {
+        sendHtml(to, AppConstants.BRAND_NAME + " - Seller Account " + statusLabel,
+                emailTemplateService.sellerDeactivated(businessName, statusLabel, reason));
+    }
 
-                    Reason: %s
+    @Async
+    public void sendNewOrderEmail(String to, String recipientName, Order order, String sellerNames, String actionUrl) {
+        sendHtmlCritical(to, AppConstants.BRAND_NAME + " - New Order " + order.getOrderNumber(),
+                emailTemplateService.newOrder(
+                        recipientName,
+                        order.getOrderNumber(),
+                        order.getUser().getName(),
+                        sellerNames,
+                        order.getTotal().toPlainString(),
+                        order.getCreatedAt().format(ORDER_DATE_FORMAT),
+                        actionUrl
+                ));
+    }
 
-                    If you believe this is an error, please contact our support team.
+    @Async
+    public void sendOrderConfirmedEmail(String to, String customerName, String orderNumber) {
+        sendHtmlCritical(to, AppConstants.BRAND_NAME + " - Order Confirmed (" + orderNumber + ")",
+                emailTemplateService.orderConfirmed(customerName, orderNumber));
+    }
 
-                    Warm regards,
-                    Team Maahish
-                    """.formatted(businessName, reason != null ? reason : "Not specified"));
-            mailSender.send(message);
-        } catch (Exception ex) {
-            log.warn("Failed to send seller rejection email: {}", ex.getMessage());
-        }
+    @Async
+    public void sendOrderDeliveredEmail(String to, String customerName, String orderNumber) {
+        sendHtmlCritical(to, AppConstants.BRAND_NAME + " - Order Delivered (" + orderNumber + ")",
+                emailTemplateService.orderDelivered(customerName, orderNumber));
     }
 
     @Async
     public void sendOrderUpdateEmail(String to, String customerName, String orderNumber, String subject, String body) {
+        sendHtmlCritical(to, AppConstants.BRAND_NAME + " - " + subject + " (" + orderNumber + ")",
+                emailTemplateService.genericNotification(subject,
+                        "Dear " + customerName + ",\n\n" + body + "\n\nOrder Number: " + orderNumber));
+    }
+
+    @Async
+    public void sendNotificationEmail(String to, String subject, String body) {
+        sendHtml(to, AppConstants.BRAND_NAME + " - " + subject,
+                emailTemplateService.genericNotification(subject, body));
+    }
+
+    private void sendHtml(String to, String subject, String htmlBody) {
+        sendHtmlInternal(to, subject, htmlBody, false);
+    }
+
+    private void sendHtmlCritical(String to, String subject, String htmlBody) {
+        sendHtmlInternal(to, subject, htmlBody, true);
+    }
+
+    private void sendHtmlRequired(String to, String subject, String htmlBody) {
         try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setTo(to);
-            message.setSubject("Maahish - " + subject + " (" + orderNumber + ")");
-            message.setText("""
-                    Dear %s,
-
-                    %s
-
-                    Order Number: %s
-
-                    Warm regards,
-                    Team Maahish
-                    """.formatted(customerName, body, orderNumber));
-            mailSender.send(message);
-        } catch (Exception ex) {
-            log.warn("Failed to send order update email to {}: {}", to, ex.getMessage());
+            sendMimeMessage(to, subject, htmlBody);
+            log.info("OTP email sent to {} — {}", to, subject);
+        } catch (MessagingException ex) {
+            log.error("CRITICAL: Failed to send OTP email to {} — {}: {}", to, subject, ex.getMessage(), ex);
+            throw new MailDeliveryException("Unable to send OTP email. Please try again later or contact support.", ex);
         }
     }
 
-    public void sendNotificationEmail(String to, String subject, String body) {
+    private void sendHtmlInternal(String to, String subject, String htmlBody, boolean critical) {
         try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setTo(to);
-            message.setSubject("Maahish - " + subject);
-            message.setText(body + "\n\nWarm regards,\nTeam Maahish");
-            mailSender.send(message);
-        } catch (Exception ex) {
-            log.warn("Failed to send notification email to {}: {}", to, ex.getMessage());
+            sendMimeMessage(to, subject, htmlBody);
+            log.info("Email sent to {} — {}", to, subject);
+        } catch (MessagingException ex) {
+            if (critical) {
+                log.error("CRITICAL: Failed to send transactional email to {} — {}: {}",
+                        to, subject, ex.getMessage(), ex);
+            } else {
+                log.error("Failed to send email to {} — {}: {}", to, subject, ex.getMessage(), ex);
+            }
         }
+    }
+
+    private void sendMimeMessage(String to, String subject, String htmlBody) throws MessagingException {
+        MimeMessage message = mailSender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+        helper.setTo(to);
+        helper.setSubject(subject);
+        helper.setText(htmlBody, true);
+        mailSender.send(message);
     }
 }

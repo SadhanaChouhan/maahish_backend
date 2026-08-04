@@ -1,0 +1,93 @@
+# Production profile — activate with SPRING_PROFILES_ACTIVE=prod
+# All secrets must come from environment variables (never commit real values).
+
+spring:
+  datasource:
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL:false}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
+  mail:
+    host: ${MAIL_HOST}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+server:
+  forward-headers-strategy: framework
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+  health:
+    db:
+      enabled: true
+    mail:
+      enabled: true
+    redis:
+      enabled: true
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+maahish:
+  jwt:
+    secret: ${JWT_SECRET}
+  auth:
+    max-register-attempts-per-hour: 5
+    max-seller-register-attempts-per-hour: 3
+    max-verify-otp-attempts-per-hour: 10
+    cookie:
+      secure: true
+      same-site: ${AUTH_COOKIE_SAME_SITE:None}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS}
+  rate-limit:
+    backend: redis
+  razorpay:
+    key-id: ${RAZORPAY_KEY_ID}
+    key-secret: ${RAZORPAY_KEY_SECRET}
+    webhook-secret: ${RAZORPAY_WEBHOOK_SECRET}
+    require-webhook-secret: true
+    currency: INR
+
+cloudinary:
+  cloud-name: ${CLOUDINARY_CLOUD_NAME}
+  api-key: ${CLOUDINARY_API_KEY}
+  api-secret: ${CLOUDINARY_API_SECRET}
+  folder: maahish/products
+
+logging:
+  level:
+    com.maahish: INFO
+    org.springframework.security: WARN

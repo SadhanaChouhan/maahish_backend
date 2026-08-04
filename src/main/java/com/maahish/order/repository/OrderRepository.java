@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.Optional;
 
 @Repository
@@ -39,6 +40,12 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     Optional<Order> findFirstByUserAndPaymentStatusOrderByCreatedAtDesc(User user, PaymentStatus paymentStatus);
 
     long countByStatus(OrderStatus status);
+
+    long countByUserAndPaymentStatus(User user, PaymentStatus paymentStatus);
+
+    long countByUser(User user);
+
+    boolean existsByUserAndStatusIn(User user, Collection<OrderStatus> statuses);
 
     @EntityGraph(attributePaths = {"user", "address", "items", "items.product", "items.product.seller", "payment"})
     @org.springframework.data.jpa.repository.Query("""

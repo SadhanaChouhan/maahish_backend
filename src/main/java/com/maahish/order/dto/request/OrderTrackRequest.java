@@ -14,4 +14,7 @@ public class OrderTrackRequest {
     /** Email or mobile used when placing the order (required to verify ownership). */
     @NotBlank(message = "Email or mobile is required")
     private String contact;
+
+    /** Honeypot — must remain empty; bots that fill it are rejected silently. */
+    private String website;
 }

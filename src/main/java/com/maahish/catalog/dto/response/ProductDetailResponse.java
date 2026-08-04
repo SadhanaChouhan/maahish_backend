@@ -1,5 +1,6 @@
 package com.maahish.catalog.dto.response;
 
+import com.maahish.catalog.enums.InventoryStatus;
 import com.maahish.catalog.enums.ProductStatus;
 
 import lombok.AllArgsConstructor;
@@ -36,6 +37,7 @@ public class ProductDetailResponse {
     private String videoUrl;
     private String image360Url;
     private ProductStatus status;
+    private InventoryStatus inventoryStatus;
     private Boolean bestSeller;
     private Boolean latestArrival;
     private CategoryResponse category;

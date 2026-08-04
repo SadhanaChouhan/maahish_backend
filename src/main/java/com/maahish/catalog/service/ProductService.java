@@ -35,6 +35,8 @@ public interface ProductService {
 
     ProductDetailResponse getProductById(Long id);
 
+    ProductDetailResponse getCustomerProductById(Long id);
+
     void addReview(Long productId, Long userId, ReviewRequest request);
 
     void adminRemoveProduct(Long id);

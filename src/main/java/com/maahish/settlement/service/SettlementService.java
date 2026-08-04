@@ -15,6 +15,8 @@ public interface SettlementService {
 
     void createSettlementsForOrder(Order order);
 
+    void cancelSettlementForReturnedOrderItem(Long orderItemId);
+
     PageResponse<SellerSettlementResponse> adminListSettlements(SettlementStatus status, Long sellerId, int page, int size);
 
     SellerSettlementResponse adminUpdateSettlementStatus(Long settlementId, SettlementStatusUpdateRequest request);

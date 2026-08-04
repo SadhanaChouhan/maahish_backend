@@ -17,9 +17,22 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Repository
 public class ProductRepositoryImpl implements ProductRepositoryCustom {
+
+    private static final String DEFAULT_SORT_FIELD = "createdAt";
+    private static final Map<String, String> ALLOWED_SORT_FIELDS = Map.of(
+            "createdAt", "createdAt",
+            "updatedAt", "updatedAt",
+            "name", "name",
+            "price", "price",
+            "sellingPrice", "sellingPrice",
+            "rating", "rating",
+            "reviewCount", "reviewCount",
+            "stock", "stock"
+    );
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -139,7 +152,14 @@ public class ProductRepositoryImpl implements ProductRepositoryCustom {
             predicates.add(cb.equal(cb.lower(root.get("color")), color.toLowerCase()));
         }
         if (StringUtils.hasText(occasion)) {
-            predicates.add(cb.equal(cb.lower(root.get("occasion")), occasion.toLowerCase()));
+            String occ = occasion.toLowerCase();
+            predicates.add(cb.or(
+                    cb.equal(cb.lower(root.get("occasion")), "all"),
+                    cb.equal(cb.lower(root.get("occasion")), occ),
+                    cb.like(cb.lower(root.get("occasion")), occ + ",%"),
+                    cb.like(cb.lower(root.get("occasion")), "%," + occ + ",%"),
+                    cb.like(cb.lower(root.get("occasion")), "%," + occ)
+            ));
         }
         if (minPrice != null) {
             predicates.add(cb.greaterThanOrEqualTo(root.get("sellingPrice"), minPrice));
@@ -176,8 +196,15 @@ public class ProductRepositoryImpl implements ProductRepositoryCustom {
     }
 
     private jakarta.persistence.criteria.Order buildOrder(CriteriaBuilder cb, Root<Product> root, String sortBy, String sortDir) {
-        String field = StringUtils.hasText(sortBy) ? sortBy : "createdAt";
+        String field = resolveSortField(sortBy);
         Sort.Direction direction = "asc".equalsIgnoreCase(sortDir) ? Sort.Direction.ASC : Sort.Direction.DESC;
         return direction == Sort.Direction.ASC ? cb.asc(root.get(field)) : cb.desc(root.get(field));
+    }
+
+    private String resolveSortField(String sortBy) {
+        if (!StringUtils.hasText(sortBy)) {
+            return DEFAULT_SORT_FIELD;
+        }
+        return ALLOWED_SORT_FIELDS.getOrDefault(sortBy, DEFAULT_SORT_FIELD);
     }
 }

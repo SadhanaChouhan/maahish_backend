@@ -30,6 +30,8 @@ import com.maahish.catalog.dto.response.ReviewResponse;
 import com.maahish.seller.entity.Seller;
 import com.maahish.seller.mapper.SellerMapper;
 import com.maahish.common.util.SlugUtil;
+import com.maahish.common.security.ShoppingAccessValidator;
+import com.maahish.order.repository.OrderItemRepository;
 import com.maahish.user.entity.User;
 import com.maahish.user.repository.UserRepository;
 
@@ -60,6 +62,8 @@ public class ProductServiceImpl implements ProductService {
     private final FabricTypeService fabricTypeService;
     private final CloudinaryService cloudinaryService;
     private final SellerMapper sellerMapper;
+    private final ShoppingAccessValidator shoppingAccessValidator;
+    private final OrderItemRepository orderItemRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -115,6 +119,7 @@ public class ProductServiceImpl implements ProductService {
     public ProductDetailResponse getProductBySlug(String slug) {
         Product product = productRepository.findBySlug(slug)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
+        assertVisibleToCustomers(product);
         return buildProductDetail(product);
     }
 
@@ -127,15 +132,33 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public ProductDetailResponse getCustomerProductById(Long id) {
+        Product product = productRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
+        assertVisibleToCustomers(product);
+        return buildProductDetail(product);
+    }
+
+    @Override
     @Transactional
     public void addReview(Long productId, Long userId, ReviewRequest request) {
+        shoppingAccessValidator.requireCustomer(userId);
+
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
+        assertVisibleToCustomers(product);
+
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         if (reviewRepository.existsByProductAndUser(product, user)) {
             throw new BadRequestException("You have already reviewed this product");
+        }
+
+        if (!orderItemRepository.existsDeliveredPurchaseByUserAndProduct(userId, productId)) {
+            throw new BadRequestException(
+                    "You can only review products from delivered orders in your account");
         }
 
         Review review = Review.builder()
@@ -219,6 +242,13 @@ public class ProductServiceImpl implements ProductService {
             summary.setSeller(sellerMapper.toSummary(product.getSeller()));
         }
         return summary;
+    }
+
+    private void assertVisibleToCustomers(Product product) {
+        if (product.getStatus() == ProductStatus.INACTIVE
+                || product.getStatus() == ProductStatus.DISCONTINUED) {
+            throw new ResourceNotFoundException("Product not found");
+        }
     }
 
     private ProductDetailResponse buildProductDetail(Product product) {

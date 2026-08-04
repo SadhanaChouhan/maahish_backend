@@ -26,6 +26,7 @@ import com.maahish.order.enums.OrderStatus;
 import com.maahish.order.dto.request.OrderTrackRequest;
 import com.maahish.order.dto.response.OrderTrackingItemResponse;
 import com.maahish.config.OrderTrackingProperties;
+import com.maahish.config.PaymentRateLimitProperties;
 import com.maahish.order.dto.response.OrderTrackingResponse;
 import com.maahish.common.util.PageMapper;
 import com.maahish.common.dto.response.PageResponse;
@@ -47,20 +48,26 @@ import com.maahish.catalog.service.ProductStockService;
 import com.maahish.auth.util.RateLimitService;
 import com.maahish.infrastructure.payment.service.RazorpayService;
 import com.maahish.common.exception.ResourceNotFoundException;
+import com.maahish.common.constants.AppConstants;
 import com.maahish.seller.entity.Seller;
 import com.maahish.settlement.service.SettlementService;
 import com.maahish.common.security.ShoppingAccessValidator;
 import com.maahish.user.entity.User;
 import com.maahish.user.repository.UserRepository;
 import com.maahish.order.dto.request.VerifyPaymentRequest;
+import com.maahish.order.exception.WebhookProcessingException;
+import com.maahish.shipping.dto.response.ShippingCalculationResponse;
+import com.maahish.shipping.service.ShippingCalculationService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -74,8 +81,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class OrderServiceImpl implements OrderService {
 
-    private static final BigDecimal FREE_SHIPPING_THRESHOLD = new BigDecimal("1999");
-    private static final BigDecimal SHIPPING_CHARGE = new BigDecimal("99");
     private static final int CHECKOUT_EXPIRY_MINUTES = 30;
     private static final String FULFILL_SOURCE_CALLBACK = "callback";
     private static final String FULFILL_SOURCE_WEBHOOK = "webhook";
@@ -100,7 +105,9 @@ public class OrderServiceImpl implements OrderService {
     private final CheckoutFlowLogger checkoutFlowLogger;
     private final ProductStockService productStockService;
     private final OrderTrackingProperties orderTrackingProperties;
+    private final PaymentRateLimitProperties paymentRateLimitProperties;
     private final RateLimitService rateLimitService;
+    private final ShippingCalculationService shippingCalculationService;
 
     @Override
     @Transactional(readOnly = true)
@@ -113,90 +120,152 @@ public class OrderServiceImpl implements OrderService {
 
         List<CheckoutLine> lines = resolveCheckoutLines(userId, request);
         validateCheckoutLines(lines);
-        CartTotals totals = calculateLineTotals(lines);
+        ShippingCalculationResponse shipping = calculateShipping(user, address, lines);
 
-        checkoutFlowLogger.prepareCheckout(userId, address.getId(), lines.size(), totals.total());
+        checkoutFlowLogger.prepareCheckout(userId, address.getId(), lines.size(), shipping.getTotal());
 
-        return CheckoutPreviewResponse.builder()
-                .addressId(address.getId())
-                .subtotal(totals.subtotal())
-                .shippingCharge(totals.shipping())
-                .total(totals.total())
-                .message("Proceed to payment to place your order")
-                .build();
+        return toCheckoutPreview(address.getId(), shipping);
     }
 
     @Override
     @Transactional
     public PaymentResponse initiatePayment(Long userId, CheckoutRequest request) {
         shoppingAccessValidator.requireCustomer(userId);
+        rateLimitService.assertAllowed(
+                "payment-initiate:" + userId,
+                paymentRateLimitProperties.getMaxInitiateAttemptsPerHour(),
+                Duration.ofHours(1));
+
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         Address address = addressRepository.findByIdAndUser(request.getAddressId(), user)
                 .orElseThrow(() -> new ResourceNotFoundException("Address not found"));
 
         List<CheckoutLine> lines = resolveCheckoutLines(userId, request);
-        validateCheckoutLines(lines);
         int expiredSessions = expirePendingCheckouts(userId);
-
-        CartTotals totals = calculateLineTotals(lines);
+        validateCheckoutLines(lines);
+        ShippingCalculationResponse shipping = calculateShipping(user, address, lines);
         String checkoutReference = UUID.randomUUID().toString().replace("-", "");
         boolean buyNow = isBuyNowCheckout(request);
+        LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(CHECKOUT_EXPIRY_MINUTES);
 
-        RazorpayService.RazorpayOrderResult result = razorpayService.createOrder(
-                totals.total(), checkoutReference);
+        List<CheckoutLine> reservedLines = new ArrayList<>();
+        try {
+            for (CheckoutLine line : lines) {
+                productStockService.reserveStock(line.product().getId(), line.quantity());
+                reservedLines.add(line);
+            }
 
-        PendingCheckout pendingCheckout = PendingCheckout.builder()
-                .user(user)
-                .address(address)
-                .orderNotes(normalizeOrderNotes(request.getOrderNotes()))
-                .checkoutReference(checkoutReference)
-                .razorpayOrderId(result.razorpayOrderId())
-                .subtotal(totals.subtotal())
-                .shippingCharge(totals.shipping())
-                .total(totals.total())
-                .status(PendingCheckoutStatus.PENDING)
-                .expiresAt(LocalDateTime.now().plusMinutes(CHECKOUT_EXPIRY_MINUTES))
-                .buyNow(buyNow)
-                .build();
+            RazorpayService.RazorpayOrderResult result = razorpayService.createOrder(
+                    shipping.getTotal(), checkoutReference, expiresAt);
 
-        for (CheckoutLine line : lines) {
-            Product product = line.product();
-            PendingCheckoutItem item = PendingCheckoutItem.builder()
-                    .pendingCheckout(pendingCheckout)
-                    .product(product)
-                    .qty(line.quantity())
-                    .price(product.getSellingPrice())
-                    .productName(product.getName())
-                    .productImageUrl(productMapper.toSummary(product).getPrimaryImageUrl())
+            PendingCheckout pendingCheckout = PendingCheckout.builder()
+                    .user(user)
+                    .address(address)
+                    .orderNotes(normalizeOrderNotes(request.getOrderNotes()))
+                    .checkoutReference(checkoutReference)
+                    .razorpayOrderId(result.razorpayOrderId())
+                    .subtotal(shipping.getSubtotal())
+                    .shippingCharge(shipping.getShippingCharge())
+                    .total(shipping.getTotal())
+                    .status(PendingCheckoutStatus.PENDING)
+                    .expiresAt(expiresAt)
+                    .buyNow(buyNow)
                     .build();
-            pendingCheckout.getItems().add(item);
+
+            for (CheckoutLine line : lines) {
+                Product product = line.product();
+                PendingCheckoutItem item = PendingCheckoutItem.builder()
+                        .pendingCheckout(pendingCheckout)
+                        .product(product)
+                        .qty(line.quantity())
+                        .price(product.getSellingPrice())
+                        .productName(product.getName())
+                        .productImageUrl(productMapper.toSummary(product).getPrimaryImageUrl())
+                        .build();
+                pendingCheckout.getItems().add(item);
+            }
+
+            pendingCheckoutRepository.save(pendingCheckout);
+            checkoutFlowLogger.paymentInitiated(
+                    userId, checkoutReference, result.razorpayOrderId(),
+                    lines.size(), shipping.getTotal(), expiredSessions);
+
+            return toPaymentResponse(pendingCheckout, user, result.amountPaise(), result.currency());
+        } catch (RuntimeException ex) {
+            releaseReservations(reservedLines);
+            throw ex;
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PaymentResponse resumePayment(Long userId, String checkoutReference) {
+        shoppingAccessValidator.requireCustomer(userId);
+        if (checkoutReference == null || checkoutReference.isBlank()) {
+            throw new BadRequestException("Checkout reference is required");
         }
 
-        pendingCheckoutRepository.save(pendingCheckout);
-        checkoutFlowLogger.paymentInitiated(
-                userId, checkoutReference, result.razorpayOrderId(),
-                lines.size(), totals.total(), expiredSessions);
+        PendingCheckout pendingCheckout = pendingCheckoutRepository
+                .findWithDetailsByCheckoutReferenceAndUserId(checkoutReference.trim(), userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Checkout session not found"));
 
+        if (pendingCheckout.getStatus() == PendingCheckoutStatus.COMPLETED) {
+            throw new BadRequestException("This checkout is already completed. Please check My Orders.");
+        }
+        if (pendingCheckout.getStatus() != PendingCheckoutStatus.PENDING) {
+            throw new BadRequestException("Checkout session is no longer valid. Please start checkout again.");
+        }
+        if (pendingCheckout.getExpiresAt().isBefore(LocalDateTime.now())) {
+            expireCheckoutSession(pendingCheckout);
+            pendingCheckoutRepository.save(pendingCheckout);
+            throw new BadRequestException("Checkout session has expired. Please start checkout again.");
+        }
+
+        User user = pendingCheckout.getUser();
+        return toPaymentResponse(
+                pendingCheckout,
+                user,
+                toPaise(pendingCheckout.getTotal()),
+                razorpayService.getCurrency());
+    }
+
+    private PaymentResponse toPaymentResponse(
+            PendingCheckout pendingCheckout,
+            User user,
+            int amountPaise,
+            String currency) {
         return PaymentResponse.builder()
-                .razorpayOrderId(result.razorpayOrderId())
-                .checkoutReference(checkoutReference)
-                .amount(totals.total())
-                .amountPaise(result.amountPaise())
-                .currency(result.currency())
+                .razorpayOrderId(pendingCheckout.getRazorpayOrderId())
+                .checkoutReference(pendingCheckout.getCheckoutReference())
+                .amount(pendingCheckout.getTotal())
+                .amountPaise(amountPaise)
+                .currency(currency)
                 .status(PaymentStatus.PENDING)
                 .method(PaymentMethod.RAZORPAY)
                 .razorpayKeyId(razorpayService.getKeyId())
                 .customerName(user.getName())
                 .customerEmail(user.getEmail())
                 .customerPhone(user.getMobile())
+                .expiresAt(pendingCheckout.getExpiresAt())
                 .build();
+    }
+
+    private int toPaise(BigDecimal amountInr) {
+        return amountInr.multiply(BigDecimal.valueOf(100))
+                .setScale(0, RoundingMode.HALF_UP)
+                .intValue();
     }
 
     @Override
     @Transactional
     public OrderResponse verifyPayment(Long userId, VerifyPaymentRequest request) {
         shoppingAccessValidator.requireCustomer(userId);
+        rateLimitService.assertAllowed(
+                "payment-verify:" + userId,
+                paymentRateLimitProperties.getMaxVerifyAttemptsPerHour(),
+                Duration.ofHours(1));
+
         checkoutFlowLogger.paymentVerifyStarted(
                 userId, request.getRazorpayOrderId(), request.getRazorpayPaymentId());
 
@@ -218,7 +287,9 @@ public class OrderServiceImpl implements OrderService {
                 request.getRazorpaySignature()
         );
 
-        return fulfillPendingCheckout(pendingCheckout, request.getRazorpayPaymentId(), FULFILL_SOURCE_CALLBACK);
+        FulfillmentResult result = fulfillPendingCheckout(
+                request.getRazorpayOrderId(), request.getRazorpayPaymentId(), FULFILL_SOURCE_CALLBACK);
+        return result.toOrderResponseForCallback();
     }
 
     @Override
@@ -243,44 +314,58 @@ public class OrderServiceImpl implements OrderService {
 
         checkoutFlowLogger.webhookProcessing(eventType, razorpayOrderId, razorpayPaymentId);
 
-        PendingCheckout pendingCheckout = pendingCheckoutRepository.findWithDetailsByRazorpayOrderId(razorpayOrderId)
-                .orElseThrow(() -> {
-                    checkoutFlowLogger.checkoutSessionNotFound(razorpayOrderId, FULFILL_SOURCE_WEBHOOK);
-                    return new ResourceNotFoundException("Checkout session not found for webhook");
-                });
-
-        fulfillPendingCheckout(pendingCheckout, razorpayPaymentId, FULFILL_SOURCE_WEBHOOK);
+        FulfillmentResult result = fulfillPendingCheckout(
+                razorpayOrderId, razorpayPaymentId, FULFILL_SOURCE_WEBHOOK);
+        if (result.webhookShouldRetry()) {
+            throw new WebhookProcessingException(result.message());
+        }
+        if (result.disposition() == FulfillmentResult.Disposition.REFUNDED
+                || result.disposition() == FulfillmentResult.Disposition.REJECTED) {
+            log.warn("event=checkout_webhook_fulfill_rejected razorpayOrderId={} disposition={} message={}",
+                    razorpayOrderId, result.disposition(), result.message());
+        }
     }
 
-    private OrderResponse fulfillPendingCheckout(PendingCheckout pendingCheckout, String razorpayPaymentId, String source) {
+    private FulfillmentResult fulfillPendingCheckout(
+            String razorpayOrderId, String razorpayPaymentId, String source) {
+        PendingCheckout pendingCheckout = pendingCheckoutRepository
+                .findWithDetailsByRazorpayOrderIdForUpdate(razorpayOrderId)
+                .orElseThrow(() -> {
+                    checkoutFlowLogger.checkoutSessionNotFound(razorpayOrderId, source);
+                    return new ResourceNotFoundException("Checkout session not found");
+                });
+
         if (pendingCheckout.getStatus() == PendingCheckoutStatus.COMPLETED) {
             checkoutFlowLogger.fulfillIdempotent(
                     pendingCheckout.getCheckoutReference(), pendingCheckout.getOrderNumber(), source);
             Order existing = orderRepository.findWithDetailsByOrderNumber(pendingCheckout.getOrderNumber())
                     .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
-            return orderMappingHelper.toOrderResponse(existing);
+            return FulfillmentResult.idempotent(orderMappingHelper.toOrderResponse(existing));
         }
 
-        if (pendingCheckout.getStatus() != PendingCheckoutStatus.PENDING) {
+        if (pendingCheckout.getStatus() != PendingCheckoutStatus.PENDING
+                && pendingCheckout.getStatus() != PendingCheckoutStatus.EXPIRED) {
             checkoutFlowLogger.fulfillInvalidStatus(
                     pendingCheckout.getCheckoutReference(), pendingCheckout.getStatus().name(), source);
-            throw new BadRequestException("Checkout session is no longer valid");
+            return FulfillmentResult.rejected("Checkout session is no longer valid");
         }
-        if (pendingCheckout.getExpiresAt().isBefore(LocalDateTime.now())) {
-            pendingCheckout.setStatus(PendingCheckoutStatus.EXPIRED);
-            pendingCheckoutRepository.save(pendingCheckout);
-            checkoutFlowLogger.fulfillExpired(pendingCheckout.getCheckoutReference(), source);
-            throw new BadRequestException("Checkout session has expired. Please start checkout again.");
+
+        boolean latePayment = pendingCheckout.getExpiresAt().isBefore(LocalDateTime.now())
+                || pendingCheckout.getStatus() == PendingCheckoutStatus.EXPIRED;
+        if (latePayment) {
+            checkoutFlowLogger.fulfillLatePayment(pendingCheckout.getCheckoutReference(), source);
+        }
+
+        FulfillmentResult paymentMismatch = verifyCapturedPaymentAmount(
+                pendingCheckout, razorpayPaymentId, source);
+        if (paymentMismatch != null) {
+            return paymentMismatch;
         }
 
         for (PendingCheckoutItem item : pendingCheckout.getItems()) {
             Product product = item.getProduct();
             if (product.getStatus() != ProductStatus.ACTIVE || product.getStock() < item.getQty()) {
-                pendingCheckout.setStatus(PendingCheckoutStatus.FAILED);
-                pendingCheckoutRepository.save(pendingCheckout);
-                checkoutFlowLogger.fulfillStockFailed(
-                        pendingCheckout.getCheckoutReference(), product.getId(), product.getName(), source);
-                throw new BadRequestException("Product unavailable: " + product.getName());
+                return failFulfillmentWithRefund(pendingCheckout, razorpayPaymentId, source, product);
             }
         }
 
@@ -299,19 +384,25 @@ public class OrderServiceImpl implements OrderService {
                 .orderNotes(pendingCheckout.getOrderNotes())
                 .build();
 
-        for (PendingCheckoutItem pendingItem : pendingCheckout.getItems()) {
-            Product product = productStockService.deductStock(
-                    pendingItem.getProduct().getId(), pendingItem.getQty());
+        try {
+            for (PendingCheckoutItem pendingItem : pendingCheckout.getItems()) {
+                Product product = productStockService.fulfillReservedStock(
+                        pendingItem.getProduct().getId(), pendingItem.getQty());
 
-            OrderItem orderItem = OrderItem.builder()
-                    .order(order)
-                    .product(product)
-                    .qty(pendingItem.getQty())
-                    .price(pendingItem.getPrice())
-                    .productName(pendingItem.getProductName())
-                    .productImageUrl(pendingItem.getProductImageUrl())
-                    .build();
-            order.getItems().add(orderItem);
+                OrderItem orderItem = OrderItem.builder()
+                        .order(order)
+                        .product(product)
+                        .qty(pendingItem.getQty())
+                        .price(pendingItem.getPrice())
+                        .productName(pendingItem.getProductName())
+                        .productImageUrl(pendingItem.getProductImageUrl())
+                        .build();
+                order.getItems().add(orderItem);
+            }
+        } catch (BadRequestException ex) {
+            return failFulfillmentWithRefund(
+                    pendingCheckout, razorpayPaymentId, source,
+                    pendingCheckout.getItems().get(0).getProduct());
         }
 
         Payment payment = Payment.builder()
@@ -324,7 +415,11 @@ public class OrderServiceImpl implements OrderService {
                 .build();
         order.setPayment(payment);
 
-        order = orderRepository.save(order);
+        try {
+            order = orderRepository.save(order);
+        } catch (DataIntegrityViolationException ex) {
+            return handleDuplicatePaymentFulfillment(pendingCheckout, razorpayOrderId, source, ex);
+        }
 
         pendingCheckout.setStatus(PendingCheckoutStatus.COMPLETED);
         pendingCheckout.setOrderNumber(orderNumber);
@@ -343,7 +438,40 @@ public class OrderServiceImpl implements OrderService {
                 pendingCheckout.getTotal(),
                 order.getItems().size(),
                 source);
-        return orderMappingHelper.toOrderResponse(order);
+        return FulfillmentResult.success(orderMappingHelper.toOrderResponse(order));
+    }
+
+    private FulfillmentResult handleDuplicatePaymentFulfillment(
+            PendingCheckout pendingCheckout,
+            String razorpayOrderId,
+            String source,
+            DataIntegrityViolationException ex) {
+        log.warn("event=checkout_fulfill_duplicate_payment checkoutReference={} razorpayOrderId={} source={}",
+                pendingCheckout.getCheckoutReference(), razorpayOrderId, source, ex);
+
+        return paymentRepository.findByRazorpayOrderId(razorpayOrderId)
+                .flatMap(payment -> orderRepository.findWithDetailsById(payment.getOrder().getId()))
+                .map(order -> {
+                    if (pendingCheckout.getStatus() != PendingCheckoutStatus.COMPLETED) {
+                        pendingCheckout.setStatus(PendingCheckoutStatus.COMPLETED);
+                        pendingCheckout.setOrderNumber(order.getOrderNumber());
+                        pendingCheckoutRepository.save(pendingCheckout);
+                    }
+                    checkoutFlowLogger.fulfillIdempotent(
+                            pendingCheckout.getCheckoutReference(), order.getOrderNumber(), source);
+                    return FulfillmentResult.idempotent(orderMappingHelper.toOrderResponse(order));
+                })
+                .orElseGet(() -> FulfillmentResult.retryable(
+                        "Duplicate payment detected but order could not be loaded — retry webhook"));
+    }
+
+    private Cart loadNonEmptyCart(Long userId) {
+        Cart cart = cartRepository.findByUserId(userId)
+                .orElseThrow(() -> new BadRequestException("Cart is empty"));
+        if (cart.getItems().isEmpty()) {
+            throw new BadRequestException("Cart is empty");
+        }
+        return cart;
     }
 
     private List<CheckoutLine> resolveCheckoutLines(Long userId, CheckoutRequest request) {
@@ -374,9 +502,9 @@ public class OrderServiceImpl implements OrderService {
             if (product.getStatus() != ProductStatus.ACTIVE) {
                 throw new BadRequestException("Product is not available: " + product.getName());
             }
-            if (product.getStock() < item.getQuantity()) {
+            if (ProductStockService.availableStock(product) < item.getQuantity()) {
                 throw new BadRequestException("Insufficient stock for " + product.getName()
-                        + ". Available: " + product.getStock());
+                        + ". Available: " + ProductStockService.availableStock(product));
             }
             lines.add(new CheckoutLine(product, item.getQuantity()));
         }
@@ -389,47 +517,42 @@ public class OrderServiceImpl implements OrderService {
         }
         for (CheckoutLine line : lines) {
             Product product = line.product();
-            if (product.getStatus() != ProductStatus.ACTIVE || product.getStock() < line.quantity()) {
+            if (product.getStatus() != ProductStatus.ACTIVE
+                    || ProductStockService.availableStock(product) < line.quantity()) {
                 throw new BadRequestException("Product unavailable: " + product.getName());
             }
         }
     }
 
-    private CartTotals calculateLineTotals(List<CheckoutLine> lines) {
-        BigDecimal subtotal = BigDecimal.ZERO;
-        for (CheckoutLine line : lines) {
-            subtotal = subtotal.add(line.product().getSellingPrice()
-                    .multiply(BigDecimal.valueOf(line.quantity())));
-        }
-        BigDecimal shipping = subtotal.compareTo(FREE_SHIPPING_THRESHOLD) >= 0 ? BigDecimal.ZERO : SHIPPING_CHARGE;
-        return new CartTotals(subtotal, shipping, subtotal.add(shipping));
+    private ShippingCalculationResponse calculateShipping(User user, Address address, List<CheckoutLine> lines) {
+        List<ShippingCalculationService.CheckoutLine> shippingLines = lines.stream()
+                .map(line -> new ShippingCalculationService.CheckoutLine(line.product(), line.quantity()))
+                .toList();
+        return shippingCalculationService.calculate(user, address, shippingLines);
     }
 
-    private Cart loadNonEmptyCart(Long userId) {
-        Cart cart = cartRepository.findByUserId(userId)
-                .orElseThrow(() -> new BadRequestException("Cart is empty"));
-        if (cart.getItems().isEmpty()) {
-            throw new BadRequestException("Cart is empty");
-        }
-        return cart;
-    }
-
-    private void validateCartItems(Cart cart) {
-        validateCheckoutLines(cart.getItems().stream()
-                .map(item -> new CheckoutLine(item.getProduct(), item.getQuantity()))
-                .toList());
-    }
-
-    private CartTotals calculateCartTotals(Cart cart) {
-        return calculateLineTotals(cart.getItems().stream()
-                .map(item -> new CheckoutLine(item.getProduct(), item.getQuantity()))
-                .toList());
+    private CheckoutPreviewResponse toCheckoutPreview(Long addressId, ShippingCalculationResponse shipping) {
+        return CheckoutPreviewResponse.builder()
+                .addressId(addressId)
+                .items(shipping.getItems())
+                .subtotal(shipping.getSubtotal())
+                .originalShippingCharge(shipping.getOriginalShippingCharge())
+                .shippingCharge(shipping.getShippingCharge())
+                .shippingDiscount(shipping.getShippingDiscount())
+                .total(shipping.getTotal())
+                .freeShipping(shipping.isFreeShipping())
+                .appliedRuleName(shipping.getAppliedRuleName())
+                .appliedRuleType(shipping.getAppliedRuleType())
+                .shippingMessage(shipping.getShippingMessage())
+                .upsellMessage(shipping.getUpsellMessage())
+                .message("Proceed to payment to place your order")
+                .build();
     }
 
     private int expirePendingCheckouts(Long userId) {
         List<PendingCheckout> pending = pendingCheckoutRepository.findByUserIdAndStatus(userId, PendingCheckoutStatus.PENDING);
         for (PendingCheckout checkout : pending) {
-            checkout.setStatus(PendingCheckoutStatus.EXPIRED);
+            expireCheckoutSession(checkout);
         }
         if (!pending.isEmpty()) {
             pendingCheckoutRepository.saveAll(pending);
@@ -437,9 +560,114 @@ public class OrderServiceImpl implements OrderService {
         return pending.size();
     }
 
-    private record CheckoutLine(Product product, int quantity) {}
+    private void expireCheckoutSession(PendingCheckout checkout) {
+        if (checkout.getStatus() != PendingCheckoutStatus.PENDING) {
+            return;
+        }
+        releaseReservationsForCheckout(checkout);
+        checkout.setStatus(PendingCheckoutStatus.EXPIRED);
+    }
 
-    private record CartTotals(BigDecimal subtotal, BigDecimal shipping, BigDecimal total) {}
+    private void releaseReservationsForCheckout(PendingCheckout checkout) {
+        checkout.getItems().forEach(item ->
+                productStockService.releaseReservation(item.getProduct().getId(), item.getQty()));
+        checkoutFlowLogger.checkoutReservationReleased(
+                checkout.getCheckoutReference(), checkout.getItems().size());
+    }
+
+    private void releaseReservations(List<CheckoutLine> lines) {
+        for (CheckoutLine line : lines) {
+            productStockService.releaseReservation(line.product().getId(), line.quantity());
+        }
+    }
+
+    private FulfillmentResult verifyCapturedPaymentAmount(
+            PendingCheckout pendingCheckout,
+            String razorpayPaymentId,
+            String source) {
+        RazorpayService.CapturedPaymentDetails captured;
+        try {
+            captured = razorpayService.fetchCapturedPayment(razorpayPaymentId);
+        } catch (BadRequestException ex) {
+            log.warn("event=checkout_fulfill_payment_fetch_failed checkoutReference={} source={} error={}",
+                    pendingCheckout.getCheckoutReference(), source, ex.getMessage());
+            return FulfillmentResult.retryable("Unable to verify payment amount");
+        }
+
+        if (!"captured".equalsIgnoreCase(captured.status())) {
+            log.warn("event=checkout_fulfill_payment_not_captured checkoutReference={} status={} source={}",
+                    pendingCheckout.getCheckoutReference(), captured.status(), source);
+            return FulfillmentResult.rejected("Payment is not captured");
+        }
+
+        try {
+            razorpayService.assertCapturedAmountMatches(
+                    pendingCheckout.getTotal(), captured.amountPaise(), captured.currency());
+        } catch (BadRequestException ex) {
+            log.error("event=checkout_fulfill_payment_amount_mismatch checkoutReference={} expectedTotal={} capturedPaise={} source={}",
+                    pendingCheckout.getCheckoutReference(), pendingCheckout.getTotal(), captured.amountPaise(), source);
+            return failFulfillmentWithRefundNote(
+                    pendingCheckout,
+                    razorpayPaymentId,
+                    source,
+                    "Amount mismatch: " + pendingCheckout.getCheckoutReference(),
+                    "Payment amount did not match your order total. Your payment has been refunded and should reflect in 5–7 business days.");
+        }
+        return null;
+    }
+
+    private FulfillmentResult failFulfillmentWithRefundNote(
+            PendingCheckout pendingCheckout,
+            String razorpayPaymentId,
+            String source,
+            String refundReceiptNote,
+            String customerMessage) {
+        releaseReservationsForCheckout(pendingCheckout);
+        pendingCheckout.setStatus(PendingCheckoutStatus.FAILED);
+        pendingCheckoutRepository.save(pendingCheckout);
+
+        String manualRefundMessage = customerMessage
+                + " Refund could not be processed automatically — please contact support.";
+
+        try {
+            razorpayService.refundPayment(
+                    razorpayPaymentId,
+                    pendingCheckout.getTotal(),
+                    refundReceiptNote);
+            checkoutFlowLogger.fulfillRefundSuccess(
+                    pendingCheckout.getCheckoutReference(), razorpayPaymentId, source);
+            return FulfillmentResult.refunded(customerMessage);
+        } catch (RuntimeException refundEx) {
+            checkoutFlowLogger.fulfillRefundFailed(
+                    pendingCheckout.getCheckoutReference(),
+                    razorpayPaymentId,
+                    refundEx.getMessage(),
+                    source);
+            log.error("event=checkout_fulfill_refund_manual_required checkoutReference={} paymentId={}",
+                    pendingCheckout.getCheckoutReference(), razorpayPaymentId, refundEx);
+            return FulfillmentResult.retryable(manualRefundMessage);
+        }
+    }
+
+    private FulfillmentResult failFulfillmentWithRefund(
+            PendingCheckout pendingCheckout,
+            String razorpayPaymentId,
+            String source,
+            Product failedProduct) {
+        checkoutFlowLogger.fulfillStockFailed(
+                pendingCheckout.getCheckoutReference(),
+                failedProduct.getId(),
+                failedProduct.getName(),
+                source);
+        String refundMessage = "Product unavailable: " + failedProduct.getName()
+                + ". Your payment has been refunded and should reflect in 5–7 business days.";
+        return failFulfillmentWithRefundNote(
+                pendingCheckout,
+                razorpayPaymentId,
+                source,
+                "Stock unavailable: " + pendingCheckout.getCheckoutReference(),
+                refundMessage);
+    }
 
     @Override
     @Transactional(readOnly = true)
@@ -466,18 +694,33 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional(readOnly = true)
-    public OrderTrackingResponse trackOrder(OrderTrackRequest request) {
-        String rateLimitKey = "order-track:" + request.getOrderNumber().trim().toLowerCase();
+    public OrderTrackingResponse trackOrder(OrderTrackRequest request, String clientIp) {
+        if (request.getWebsite() != null && !request.getWebsite().isBlank()) {
+            throw trackingRejected();
+        }
+
+        String orderNumber = request.getOrderNumber().trim();
+        if (!isValidOrderNumberFormat(orderNumber)) {
+            throw trackingRejected();
+        }
+
+        String ipKey = "order-track-ip:" + normalizeRateLimitKey(clientIp);
         rateLimitService.assertAllowed(
-                rateLimitKey,
+                ipKey,
+                orderTrackingProperties.getMaxAttemptsPerIpPerHour(),
+                Duration.ofHours(1));
+
+        String orderKey = "order-track:" + orderNumber.toLowerCase();
+        rateLimitService.assertAllowed(
+                orderKey,
                 orderTrackingProperties.getMaxAttemptsPerHour(),
                 Duration.ofHours(1));
 
-        Order order = orderRepository.findWithDetailsByOrderNumber(request.getOrderNumber().trim())
-                .orElseThrow(() -> new ResourceNotFoundException("Order not found or contact does not match"));
+        Order order = orderRepository.findWithDetailsByOrderNumber(orderNumber)
+                .orElseThrow(this::trackingRejected);
 
         if (!contactMatchesOrder(order, request.getContact())) {
-            throw new ResourceNotFoundException("Order not found or contact does not match");
+            throw trackingRejected();
         }
 
         return OrderTrackingResponse.builder()
@@ -494,6 +737,29 @@ public class OrderServiceImpl implements OrderService {
                                 .build())
                         .toList())
                 .build();
+    }
+
+    private boolean isValidOrderNumberFormat(String orderNumber) {
+        if (orderNumber == null || orderNumber.length() < 16 || orderNumber.length() > 32) {
+            return false;
+        }
+        String prefix = AppConstants.ORDER_NUMBER_PREFIX;
+        if (!orderNumber.startsWith(prefix)) {
+            return false;
+        }
+        String suffix = orderNumber.substring(prefix.length());
+        return suffix.matches("\\d{13,}");
+    }
+
+    private ResourceNotFoundException trackingRejected() {
+        return new ResourceNotFoundException("Order not found or contact does not match");
+    }
+
+    private String normalizeRateLimitKey(String value) {
+        if (value == null || value.isBlank()) {
+            return "unknown";
+        }
+        return value.trim().toLowerCase();
     }
 
     private boolean contactMatchesOrder(Order order, String contact) {
@@ -650,4 +916,6 @@ public class OrderServiceImpl implements OrderService {
         }
         return trimmed;
     }
+
+    private record CheckoutLine(Product product, int quantity) {}
 }

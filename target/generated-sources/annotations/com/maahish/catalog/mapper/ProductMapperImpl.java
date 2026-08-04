@@ -21,7 +21,7 @@ import org.springframework.stereotype.Component;
 
 @Generated(
     value = "org.mapstruct.ap.MappingProcessor",
-    date = "2026-07-26T22:46:04+0530",
+    date = "2026-08-04T13:41:47+0530",
     comments = "version: 1.6.2, compiler: javac, environment: Java 21.0.2 (Oracle Corporation)"
 )
 @Component
@@ -72,7 +72,11 @@ public class ProductMapperImpl implements ProductMapper {
         productSummaryResponse.stock( product.getStock() );
         productSummaryResponse.seller( sellerToSellerSummaryResponse( product.getSeller() ) );
 
-        return productSummaryResponse.build();
+        ProductSummaryResponse productSummaryResponseResult = productSummaryResponse.build();
+
+        setInventoryStatus( product, productSummaryResponseResult );
+
+        return productSummaryResponseResult;
     }
 
     @Override
@@ -123,7 +127,11 @@ public class ProductMapperImpl implements ProductMapper {
         productDetailResponse.seller( sellerToProductSellerDisplayResponse( product.getSeller() ) );
         productDetailResponse.createdAt( product.getCreatedAt() );
 
-        return productDetailResponse.build();
+        ProductDetailResponse productDetailResponseResult = productDetailResponse.build();
+
+        setInventoryStatus( product, productDetailResponseResult );
+
+        return productDetailResponseResult;
     }
 
     @Override

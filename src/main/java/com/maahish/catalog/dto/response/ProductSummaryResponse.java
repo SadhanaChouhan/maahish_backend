@@ -1,5 +1,6 @@
 package com.maahish.catalog.dto.response;
 
+import com.maahish.catalog.enums.InventoryStatus;
 import com.maahish.catalog.enums.ProductStatus;
 import com.maahish.seller.dto.response.SellerSummaryResponse;
 
@@ -30,6 +31,7 @@ public class ProductSummaryResponse {
     private BigDecimal rating;
     private Integer reviewCount;
     private ProductStatus status;
+    private InventoryStatus inventoryStatus;
     private Integer stock;
     private String primaryImageUrl;
     private CategoryResponse category;

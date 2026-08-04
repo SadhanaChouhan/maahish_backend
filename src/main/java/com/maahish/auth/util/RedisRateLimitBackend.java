@@ -26,8 +26,8 @@ public class RedisRateLimitBackend implements RateLimitBackend {
         try {
             Long count = redisTemplate.opsForValue().increment(redisKey);
             if (count == null) {
-                log.warn("Redis rate limit increment returned null for key {}", key);
-                return;
+                log.error("Redis rate limit increment returned null for key {}", key);
+                throw new BadRequestException("Service temporarily unavailable. Please try again later.");
             }
             if (count == 1L) {
                 redisTemplate.expire(redisKey, window);

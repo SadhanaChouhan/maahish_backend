@@ -6,12 +6,14 @@ import com.maahish.config.OtpProperties;
 import com.maahish.auth.enums.OtpPurpose;
 import com.maahish.auth.entity.OtpVerification;
 import com.maahish.auth.repository.OtpVerificationRepository;
+import com.maahish.auth.util.OtpHasher;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -27,6 +29,7 @@ class OtpServiceImplTest {
     @Mock private MailService mailService;
 
     private OtpProperties otpProperties;
+    private OtpHasher otpHasher;
     private OtpServiceImpl otpService;
 
     @BeforeEach
@@ -37,14 +40,15 @@ class OtpServiceImplTest {
         otpProperties.setMaxVerifyAttempts(3);
         otpProperties.setResendCooldownSeconds(60);
         otpProperties.setMaxSendsPerHour(5);
-        otpService = new OtpServiceImpl(otpRepository, otpProperties, mailService);
+        otpHasher = new OtpHasher(new BCryptPasswordEncoder());
+        otpService = new OtpServiceImpl(otpRepository, otpProperties, mailService, otpHasher);
     }
 
     @Test
     void verifyOtp_invalidCode_incrementsFailedAttempts() {
         OtpVerification verification = OtpVerification.builder()
                 .email("user@test.com")
-                .otp("123456")
+                .otp(otpHasher.hash("123456"))
                 .purpose(OtpPurpose.REGISTRATION)
                 .expiresAt(LocalDateTime.now().plusMinutes(5))
                 .verified(false)
@@ -66,7 +70,7 @@ class OtpServiceImplTest {
     void verifyOtp_tooManyFailedAttempts_rejects() {
         OtpVerification verification = OtpVerification.builder()
                 .email("user@test.com")
-                .otp("123456")
+                .otp(otpHasher.hash("123456"))
                 .purpose(OtpPurpose.REGISTRATION)
                 .expiresAt(LocalDateTime.now().plusMinutes(5))
                 .verified(false)
@@ -93,5 +97,22 @@ class OtpServiceImplTest {
 
         assertThrows(BadRequestException.class,
                 () -> otpService.generateAndSendOtp("user@test.com", OtpPurpose.REGISTRATION));
+    }
+
+    @Test
+    void generateOtp_storesHashedValue() {
+        when(otpRepository.countByEmailAndPurposeAndCreatedAtAfter(anyString(), any(), any()))
+                .thenReturn(0L);
+        when(otpRepository.findTopByEmailAndPurposeOrderByCreatedAtDesc(anyString(), any()))
+                .thenReturn(Optional.empty());
+        when(otpRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        otpService.generateAndSendOtp("user@test.com", OtpPurpose.REGISTRATION);
+
+        verify(otpRepository).save(argThat(saved ->
+                saved.getOtp() != null
+                        && !saved.getOtp().equals("123456")
+                        && saved.getOtp().startsWith("$2")));
+        verify(mailService).sendOtpEmail(eq("user@test.com"), anyString(), eq(OtpPurpose.REGISTRATION.name()));
     }
 }

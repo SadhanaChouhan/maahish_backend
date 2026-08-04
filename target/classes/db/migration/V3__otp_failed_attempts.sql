@@ -1,1 +1,0 @@
-ALTER TABLE otp_verifications ADD COLUMN IF NOT EXISTS failed_attempts INT NOT NULL DEFAULT 0;

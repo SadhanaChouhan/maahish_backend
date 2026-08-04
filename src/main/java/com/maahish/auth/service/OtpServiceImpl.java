@@ -1,11 +1,13 @@
 package com.maahish.auth.service;
 
 import com.maahish.common.exception.BadRequestException;
+import com.maahish.common.exception.MailDeliveryException;
 import com.maahish.infrastructure.mail.service.MailService;
 import com.maahish.config.OtpProperties;
 import com.maahish.auth.enums.OtpPurpose;
 import com.maahish.auth.entity.OtpVerification;
 import com.maahish.auth.repository.OtpVerificationRepository;
+import com.maahish.auth.util.OtpHasher;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +25,7 @@ public class OtpServiceImpl implements OtpService {
     private final OtpVerificationRepository otpRepository;
     private final OtpProperties otpProperties;
     private final MailService mailService;
+    private final OtpHasher otpHasher;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Override
@@ -47,9 +50,15 @@ public class OtpServiceImpl implements OtpService {
                 });
 
         String otp = generateOtp();
+        try {
+            mailService.sendOtpEmail(normalizedEmail, otp, purpose.name());
+        } catch (MailDeliveryException ex) {
+            throw new BadRequestException(ex.getMessage());
+        }
+
         OtpVerification verification = OtpVerification.builder()
                 .email(normalizedEmail)
-                .otp(otp)
+                .otp(otpHasher.hash(otp))
                 .purpose(purpose)
                 .expiresAt(now.plusMinutes(otpProperties.getExpirationMinutes()))
                 .verified(false)
@@ -57,8 +66,7 @@ public class OtpServiceImpl implements OtpService {
                 .createdAt(now)
                 .build();
         otpRepository.save(verification);
-        mailService.sendOtpEmail(email, otp, purpose.name());
-        log.info("OTP generated for {} purpose {}", email, purpose);
+        log.info("OTP generated and emailed for {} purpose {}", email, purpose);
     }
 
     @Override
@@ -77,7 +85,7 @@ public class OtpServiceImpl implements OtpService {
             throw new BadRequestException("Too many invalid OTP attempts. Please request a new OTP.");
         }
 
-        if (!verification.getOtp().equals(otp)) {
+        if (!otpHasher.matches(otp, verification.getOtp())) {
             verification.setFailedAttempts(attempts + 1);
             otpRepository.save(verification);
             throw new BadRequestException("Invalid OTP");

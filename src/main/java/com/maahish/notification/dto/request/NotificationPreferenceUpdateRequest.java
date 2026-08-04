@@ -10,8 +10,5 @@ public class NotificationPreferenceUpdateRequest {
     private Boolean emailEnabled;
 
     @NotNull
-    private Boolean smsEnabled;
-
-    @NotNull
     private Boolean inAppEnabled;
 }

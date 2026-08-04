@@ -8,7 +8,6 @@ import com.maahish.notification.repository.NotificationPreferenceRepository;
 import com.maahish.notification.enums.NotificationReferenceType;
 import com.maahish.notification.repository.NotificationRepository;
 import com.maahish.notification.enums.NotificationType;
-import com.maahish.infrastructure.sms.service.SmsService;
 import com.maahish.user.entity.User;
 
 import lombok.Builder;
@@ -36,13 +35,23 @@ public class NotificationDispatcher {
             NotificationType.ORDER_SHIPPED,
             NotificationType.ORDER_OUT_FOR_DELIVERY,
             NotificationType.ORDER_DELIVERED,
-            NotificationType.ORDER_CANCELLED
+            NotificationType.ORDER_CANCELLED,
+            NotificationType.NEW_RETURN_REQUEST,
+            NotificationType.RETURN_REQUEST_SUBMITTED,
+            NotificationType.RETURN_APPROVED,
+            NotificationType.RETURN_REJECTED,
+            NotificationType.RETURN_PARCEL_RECEIVED,
+            NotificationType.REFUND_PENDING,
+            NotificationType.REFUND_COMPLETED,
+            NotificationType.EXCHANGE_REQUESTED,
+            NotificationType.EXCHANGE_SHIPPED,
+            NotificationType.EXCHANGE_COMPLETED,
+            NotificationType.CUSTOMER_SHIPPED_RETURN
     );
 
     private final NotificationRepository notificationRepository;
     private final NotificationPreferenceRepository preferenceRepository;
     private final MailService mailService;
-    private final SmsService smsService;
 
     @Transactional
     public void dispatch(DispatchRequest request) {
@@ -69,11 +78,6 @@ public class NotificationDispatcher {
                 && (mandatory || Boolean.TRUE.equals(preferences.getEmailEnabled()))) {
             mailService.sendNotificationEmail(user.getEmail(), request.title(), request.message());
         }
-
-        if (request.sms() && StringUtils.hasText(request.smsMobile())
-                && (mandatory || Boolean.TRUE.equals(preferences.getSmsEnabled()))) {
-            smsService.send(request.smsMobile(), "Maahish: " + request.message());
-        }
     }
 
     @Transactional
@@ -82,7 +86,6 @@ public class NotificationDispatcher {
                 .orElseGet(() -> preferenceRepository.save(NotificationPreference.builder()
                         .user(user)
                         .emailEnabled(true)
-                        .smsEnabled(true)
                         .inAppEnabled(true)
                         .build()));
     }
@@ -97,8 +100,6 @@ public class NotificationDispatcher {
             Long referenceId,
             boolean inApp,
             boolean email,
-            boolean sms,
-            String smsMobile,
             boolean mandatory,
             String actionPath
     ) {

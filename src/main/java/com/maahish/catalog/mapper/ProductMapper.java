@@ -9,9 +9,13 @@ import com.maahish.catalog.dto.response.ProductImageResponse;
 import com.maahish.catalog.dto.response.ProductSummaryResponse;
 import com.maahish.catalog.entity.Review;
 import com.maahish.catalog.dto.response.ReviewResponse;
+import com.maahish.catalog.util.InventoryStatusUtil;
+import com.maahish.catalog.service.ProductStockService;
 
+import org.mapstruct.AfterMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.MappingTarget;
 import org.mapstruct.Named;
 
 import java.util.Comparator;
@@ -26,6 +30,7 @@ public interface ProductMapper {
     @Mapping(target = "fabricTypeId", source = "fabricType.id")
     @Mapping(target = "primaryImageUrl", source = "product", qualifiedByName = "primaryImage")
     @Mapping(target = "category", source = "category")
+    @Mapping(target = "inventoryStatus", ignore = true)
     ProductSummaryResponse toSummary(Product product);
 
     List<ProductSummaryResponse> toSummaryList(List<Product> products);
@@ -37,7 +42,18 @@ public interface ProductMapper {
     @Mapping(target = "reviews", ignore = true)
     @Mapping(target = "relatedProducts", ignore = true)
     @Mapping(target = "completeTheLook", ignore = true)
+    @Mapping(target = "inventoryStatus", ignore = true)
     ProductDetailResponse toDetail(Product product);
+
+    @AfterMapping
+    default void setInventoryStatus(Product product, @MappingTarget ProductSummaryResponse response) {
+        response.setInventoryStatus(InventoryStatusUtil.resolve(ProductStockService.availableStock(product)));
+    }
+
+    @AfterMapping
+    default void setInventoryStatus(Product product, @MappingTarget ProductDetailResponse response) {
+        response.setInventoryStatus(InventoryStatusUtil.resolve(ProductStockService.availableStock(product)));
+    }
 
     ProductImageResponse toImageResponse(ProductImage image);
 

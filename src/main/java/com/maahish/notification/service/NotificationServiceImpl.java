@@ -48,8 +48,6 @@ public class NotificationServiceImpl implements NotificationService {
                 .referenceId(referenceId)
                 .inApp(true)
                 .email(sendEmail)
-                .sms(false)
-                .smsMobile(user.getMobile())
                 .mandatory(false)
                 .actionPath(null)
                 .build());
@@ -136,7 +134,6 @@ public class NotificationServiceImpl implements NotificationService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         NotificationPreference preferences = notificationDispatcher.getOrCreatePreferences(user);
         preferences.setEmailEnabled(request.getEmailEnabled());
-        preferences.setSmsEnabled(request.getSmsEnabled());
         preferences.setInAppEnabled(request.getInAppEnabled());
         return toPreferenceResponse(preferences);
     }
@@ -159,7 +156,6 @@ public class NotificationServiceImpl implements NotificationService {
     private NotificationPreferenceResponse toPreferenceResponse(NotificationPreference preferences) {
         return NotificationPreferenceResponse.builder()
                 .emailEnabled(preferences.getEmailEnabled())
-                .smsEnabled(preferences.getSmsEnabled())
                 .inAppEnabled(preferences.getInAppEnabled())
                 .build();
     }

@@ -58,9 +58,24 @@ public class CheckoutFlowLogger {
                 checkoutReference, status, source);
     }
 
-    public void fulfillExpired(String checkoutReference, String source) {
-        log.warn("event=checkout_fulfill_expired checkoutReference={} source={}",
+    public void fulfillLatePayment(String checkoutReference, String source) {
+        log.warn("event=checkout_fulfill_late_payment checkoutReference={} source={}",
                 checkoutReference, source);
+    }
+
+    public void fulfillRefundSuccess(String checkoutReference, String razorpayPaymentId, String source) {
+        log.info("event=checkout_fulfill_refund_success checkoutReference={} razorpayPaymentId={} source={}",
+                checkoutReference, maskPaymentId(razorpayPaymentId), source);
+    }
+
+    public void fulfillRefundFailed(String checkoutReference, String razorpayPaymentId, String error, String source) {
+        log.error("event=checkout_fulfill_refund_failed checkoutReference={} razorpayPaymentId={} error={} source={}",
+                checkoutReference, maskPaymentId(razorpayPaymentId), error, source);
+    }
+
+    public void checkoutReservationReleased(String checkoutReference, int itemCount) {
+        log.info("event=checkout_reservation_released checkoutReference={} itemCount={}",
+                checkoutReference, itemCount);
     }
 
     public void fulfillStockFailed(String checkoutReference, Long productId, String productName, String source) {

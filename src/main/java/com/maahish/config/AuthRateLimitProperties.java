@@ -15,4 +15,5 @@ public class AuthRateLimitProperties {
     private int maxForgotPasswordAttemptsPerHour = 5;
     private int maxRegisterAttemptsPerHour = 5;
     private int maxSellerRegisterAttemptsPerHour = 3;
+    private int maxVerifyOtpAttemptsPerHour = 10;
 }

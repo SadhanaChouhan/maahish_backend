@@ -17,6 +17,9 @@ import com.maahish.catalog.service.FabricTypeService;
 import com.maahish.settlement.dto.request.CommissionRuleRequest;
 import com.maahish.settlement.dto.response.CommissionRuleResponse;
 import com.maahish.settlement.service.CommissionRuleService;
+import com.maahish.shipping.dto.request.ShippingRuleRequest;
+import com.maahish.shipping.dto.response.ShippingRuleResponse;
+import com.maahish.shipping.service.ShippingRuleService;
 import com.maahish.order.entity.Order;
 import com.maahish.order.dto.response.OrderResponse;
 import com.maahish.order.service.OrderService;
@@ -66,6 +69,7 @@ public class AdminController {
     private final SellerService sellerService;
     private final CommissionRuleService commissionRuleService;
     private final SettlementService settlementService;
+    private final ShippingRuleService shippingRuleService;
 
     // ── Dashboard ──────────────────────────────────────────────────────────
 
@@ -314,6 +318,67 @@ public class AdminController {
     public ResponseEntity<ApiResponse<CommissionRuleResponse>> disableCommissionRule(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(
                 "Commission rule disabled", commissionRuleService.setEnabled(id, false)));
+    }
+
+    // ── Shipping Rules ─────────────────────────────────────────────────────
+
+    @GetMapping("/shipping-rules")
+    @Operation(summary = "List shipping rules")
+    public ResponseEntity<ApiResponse<PageResponse<ShippingRuleResponse>>> listShippingRules(
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = AppConstants.DEFAULT_PAGE_NUMBER) int page,
+            @RequestParam(defaultValue = AppConstants.DEFAULT_PAGE_SIZE) int size) {
+        return ResponseEntity.ok(ApiResponse.success(shippingRuleService.listRules(search, page, size)));
+    }
+
+    @GetMapping("/shipping-rules/active")
+    @Operation(summary = "List currently active shipping rules")
+    public ResponseEntity<ApiResponse<List<ShippingRuleResponse>>> listActiveShippingRules() {
+        return ResponseEntity.ok(ApiResponse.success(shippingRuleService.getActiveRules()));
+    }
+
+    @GetMapping("/shipping-rules/{id}")
+    @Operation(summary = "Get shipping rule")
+    public ResponseEntity<ApiResponse<ShippingRuleResponse>> getShippingRule(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(shippingRuleService.getRule(id)));
+    }
+
+    @PostMapping("/shipping-rules")
+    @Operation(summary = "Create shipping rule")
+    public ResponseEntity<ApiResponse<ShippingRuleResponse>> createShippingRule(
+            @Valid @RequestBody ShippingRuleRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Shipping rule created", shippingRuleService.createRule(request)));
+    }
+
+    @PutMapping("/shipping-rules/{id}")
+    @Operation(summary = "Update shipping rule")
+    public ResponseEntity<ApiResponse<ShippingRuleResponse>> updateShippingRule(
+            @PathVariable Long id,
+            @Valid @RequestBody ShippingRuleRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Shipping rule updated", shippingRuleService.updateRule(id, request)));
+    }
+
+    @PatchMapping("/shipping-rules/{id}/activate")
+    @Operation(summary = "Activate shipping rule")
+    public ResponseEntity<ApiResponse<ShippingRuleResponse>> activateShippingRule(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Shipping rule activated", shippingRuleService.activateRule(id)));
+    }
+
+    @PatchMapping("/shipping-rules/{id}/deactivate")
+    @Operation(summary = "Deactivate shipping rule")
+    public ResponseEntity<ApiResponse<ShippingRuleResponse>> deactivateShippingRule(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Shipping rule deactivated", shippingRuleService.deactivateRule(id)));
+    }
+
+    @DeleteMapping("/shipping-rules/{id}")
+    @Operation(summary = "Delete shipping rule")
+    public ResponseEntity<ApiResponse<Void>> deleteShippingRule(@PathVariable Long id) {
+        shippingRuleService.deleteRule(id);
+        return ResponseEntity.ok(ApiResponse.success("Shipping rule deleted", null));
     }
 
     // ── Settlements ────────────────────────────────────────────────────────

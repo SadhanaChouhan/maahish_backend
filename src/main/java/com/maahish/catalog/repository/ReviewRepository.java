@@ -15,4 +15,6 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
     Page<Review> findByProductAndApprovedTrueOrderByCreatedAtDesc(Product product, Pageable pageable);
 
     boolean existsByProductAndUser(Product product, User user);
+
+    void deleteByUser(User user);
 }

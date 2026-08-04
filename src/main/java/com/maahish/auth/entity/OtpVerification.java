@@ -25,7 +25,7 @@ public class OtpVerification {
     @Column(nullable = false, length = 150)
     private String email;
 
-    @Column(nullable = false, length = 10)
+    @Column(nullable = false, length = 100)
     private String otp;
 
     @Enumerated(EnumType.STRING)

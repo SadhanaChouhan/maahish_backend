@@ -10,10 +10,12 @@ import com.maahish.order.dto.response.OrderTrackingResponse;
 import com.maahish.common.dto.response.PageResponse;
 import com.maahish.payment.dto.response.PaymentResponse;
 import com.maahish.common.security.SecurityUtil;
+import com.maahish.common.util.ClientIpResolver;
 import com.maahish.order.dto.request.VerifyPaymentRequest;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -41,6 +43,15 @@ public class OrderFlowController {
     public ResponseEntity<ApiResponse<PaymentResponse>> initiatePayment(@Valid @RequestBody CheckoutRequest request) {
         return ResponseEntity.ok(ApiResponse.success(
                 orderService.initiatePayment(SecurityUtil.getCurrentUserId(), request)));
+    }
+
+    @GetMapping("/v1/payments/resume/{checkoutReference}")
+    @PreAuthorize("hasRole('USER')")
+    @Operation(summary = "Resume an existing Razorpay checkout session")
+    public ResponseEntity<ApiResponse<PaymentResponse>> resumePayment(
+            @PathVariable String checkoutReference) {
+        return ResponseEntity.ok(ApiResponse.success(
+                orderService.resumePayment(SecurityUtil.getCurrentUserId(), checkoutReference)));
     }
 
     @PostMapping("/v1/payments/verify")
@@ -72,7 +83,9 @@ public class OrderFlowController {
     @PostMapping("/v1/orders/track")
     @Operation(summary = "Track order (requires order number + email or mobile)")
     public ResponseEntity<ApiResponse<OrderTrackingResponse>> trackOrder(
-            @Valid @RequestBody OrderTrackRequest request) {
-        return ResponseEntity.ok(ApiResponse.success(orderService.trackOrder(request)));
+            @Valid @RequestBody OrderTrackRequest request,
+            HttpServletRequest httpRequest) {
+        String clientIp = ClientIpResolver.resolve(httpRequest);
+        return ResponseEntity.ok(ApiResponse.success(orderService.trackOrder(request, clientIp)));
     }
 }

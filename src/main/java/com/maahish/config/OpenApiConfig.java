@@ -1,7 +1,6 @@
 package com.maahish.config;
 
-import com.maahish.cart.entity.Cart;
-import com.maahish.cart.entity.Wishlist;
+import com.maahish.common.constants.AppConstants;
 
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
@@ -26,7 +25,7 @@ public class OpenApiConfig {
                 .info(new Info()
                         .title("Maahish API")
                         .description("""
-                                Premium REST API for **Maahish** — authentic Maheshwari Cotton Silk Sarees.
+                                Premium REST API for **%s** — %s.
 
                                 | Module | Description |
                                 |--------|-------------|
@@ -35,11 +34,12 @@ public class OpenApiConfig {
                                 | Cart & Wishlist | Shopping experience |
                                 | Orders | Checkout, Razorpay, tracking |
                                 | Admin | Dashboard, catalog & user management |
-                                """)
+                                """.formatted(AppConstants.BRAND_NAME, AppConstants.BRAND_TAGLINE))
                         .version("1.0.0")
                         .contact(new Contact()
-                                .name("Maahish")
-                                .email("support@maahish.com"))
+                                .name(AppConstants.BRAND_NAME)
+                                .email(AppConstants.SUPPORT_EMAIL)
+                                .url(AppConstants.BRAND_WEBSITE_URL))
                         .license(new License().name("Proprietary")))
                 .addSecurityItem(new SecurityRequirement().addList(SECURITY_SCHEME))
                 .components(new Components()

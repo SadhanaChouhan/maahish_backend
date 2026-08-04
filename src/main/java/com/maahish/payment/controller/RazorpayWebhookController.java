@@ -1,7 +1,7 @@
 package com.maahish.payment.controller;
 
+import com.maahish.order.exception.WebhookProcessingException;
 import com.maahish.order.service.OrderService;
-import com.maahish.payment.entity.Payment;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -31,6 +31,9 @@ public class RazorpayWebhookController {
         try {
             orderService.processRazorpayWebhook(payload, signature != null ? signature : "");
             return ResponseEntity.ok().build();
+        } catch (WebhookProcessingException ex) {
+            log.error("event=checkout_webhook_retryable error={}", ex.getMessage(), ex);
+            return ResponseEntity.internalServerError().build();
         } catch (Exception ex) {
             log.error("event=checkout_webhook_failed error={}", ex.getMessage(), ex);
             throw ex;

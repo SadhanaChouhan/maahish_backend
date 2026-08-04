@@ -20,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -63,10 +64,11 @@ public class ProductController {
     @GetMapping("/{id}")
     @Operation(summary = "Get product by ID")
     public ResponseEntity<ApiResponse<ProductDetailResponse>> getById(@PathVariable Long id) {
-        return ResponseEntity.ok(ApiResponse.success(productService.getProductById(id)));
+        return ResponseEntity.ok(ApiResponse.success(productService.getCustomerProductById(id)));
     }
 
     @PostMapping(value = "/reviews/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('USER')")
     @Operation(summary = "Upload a photo for a product review")
     public ResponseEntity<ApiResponse<FileUploadResponse>> uploadReviewPhoto(
             @RequestParam("file") MultipartFile file) {
@@ -76,7 +78,8 @@ public class ProductController {
     }
 
     @PostMapping("/{id}/reviews")
-    @Operation(summary = "Add product review")
+    @PreAuthorize("hasRole('USER')")
+    @Operation(summary = "Add product review (verified delivered purchase required)")
     public ResponseEntity<ApiResponse<Void>> addReview(
             @PathVariable Long id,
             @Valid @RequestBody ReviewRequest request) {

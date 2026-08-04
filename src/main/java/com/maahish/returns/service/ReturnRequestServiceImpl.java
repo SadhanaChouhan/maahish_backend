@@ -12,6 +12,7 @@ import com.maahish.notification.service.MarketplaceNotificationService;
 import com.maahish.order.entity.Order;
 import com.maahish.order.entity.OrderItem;
 import com.maahish.order.repository.OrderItemRepository;
+import com.maahish.order.repository.OrderRepository;
 import com.maahish.order.enums.OrderStatus;
 import com.maahish.common.util.PageMapper;
 import com.maahish.common.dto.response.PageResponse;
@@ -40,10 +41,12 @@ import com.maahish.common.security.SecurityUtil;
 import com.maahish.seller.entity.Seller;
 import com.maahish.returns.dto.request.SellerExchangeReadyRequest;
 import com.maahish.seller.repository.SellerRepository;
+import com.maahish.settlement.service.SettlementService;
 import com.maahish.common.enums.UserRole;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -66,12 +69,14 @@ public class ReturnRequestServiceImpl implements ReturnRequestService {
 
     private final ReturnRequestRepository returnRequestRepository;
     private final OrderItemRepository orderItemRepository;
+    private final OrderRepository orderRepository;
     private final SellerRepository sellerRepository;
     private final RefundTransactionRepository refundTransactionRepository;
     private final ReturnRequestMapper returnRequestMapper;
     private final CloudinaryService cloudinaryService;
     private final RazorpayService razorpayService;
     private final ProductStockService productStockService;
+    private final SettlementService settlementService;
     private final MarketplaceNotificationService marketplaceNotificationService;
 
     @Override
@@ -338,7 +343,8 @@ public class ReturnRequestServiceImpl implements ReturnRequestService {
     @Override
     @Transactional
     public ReturnRequestResponse processRefund(Long adminUserId, Long returnId) {
-        ReturnRequest returnRequest = loadReturnWithDetails(returnId);
+        ReturnRequest returnRequest = returnRequestRepository.findWithDetailsByIdForUpdate(returnId)
+                .orElseThrow(() -> new ResourceNotFoundException("Return request not found"));
 
         if (returnRequest.getStatus() != ReturnRequestStatus.REFUND_INITIATED) {
             throw new BadRequestException("Refund can only be processed when status is REFUND_INITIATED");
@@ -447,28 +453,41 @@ public class ReturnRequestServiceImpl implements ReturnRequestService {
     }
 
     private ReturnRequestResponse processRefundInternal(ReturnRequest returnRequest, Long adminUserId) {
-        if (refundTransactionRepository.findByReturnRequestId(returnRequest.getId()).isPresent()) {
-            throw new BadRequestException("Refund has already been processed for this return");
+        ReturnRequest lockedReturn = returnRequestRepository.findWithDetailsByIdForUpdate(returnRequest.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Return request not found"));
+
+        Optional<RefundTransaction> existingRefund =
+                refundTransactionRepository.findByReturnRequestId(lockedReturn.getId());
+        if (existingRefund.isPresent()) {
+            return handleExistingRefundTransaction(lockedReturn, existingRefund.get());
         }
 
-        Order order = returnRequest.getOrder();
+        Order order = lockedReturn.getOrder();
         Payment payment = order.getPayment();
         if (payment == null || payment.getTransactionId() == null || payment.getTransactionId().isBlank()) {
             throw new BadRequestException("Payment record not found for refund");
         }
 
-        BigDecimal refundAmount = returnRequest.getRefundAmount();
+        BigDecimal refundAmount = lockedReturn.getRefundAmount();
         RefundTransaction refundTransaction = RefundTransaction.builder()
-                .returnRequest(returnRequest)
+                .returnRequest(lockedReturn)
                 .amount(refundAmount)
                 .status(RefundTransactionStatus.PENDING)
                 .build();
 
         try {
+            refundTransactionRepository.save(refundTransaction);
+        } catch (DataIntegrityViolationException ex) {
+            RefundTransaction concurrent = refundTransactionRepository.findByReturnRequestId(lockedReturn.getId())
+                    .orElseThrow(() -> new BadRequestException("Refund is already being processed"));
+            return handleExistingRefundTransaction(lockedReturn, concurrent);
+        }
+
+        try {
             RazorpayService.RazorpayRefundResult result = razorpayService.refundPayment(
                     payment.getTransactionId(),
                     refundAmount,
-                    "Return " + returnRequest.getReturnNumber());
+                    "Return " + lockedReturn.getReturnNumber());
             refundTransaction.setRazorpayRefundId(result.razorpayRefundId());
             refundTransaction.setRawResponse(result.rawResponse());
             refundTransaction.setStatus(RefundTransactionStatus.COMPLETED);
@@ -480,18 +499,35 @@ public class ReturnRequestServiceImpl implements ReturnRequestService {
         }
 
         refundTransactionRepository.save(refundTransaction);
-        transitionStatus(returnRequest, ReturnRequestStatus.REFUND_COMPLETED,
+        transitionStatus(lockedReturn, ReturnRequestStatus.REFUND_COMPLETED,
                 "Refund of Rs " + refundAmount + " completed", adminUserId, UserRole.ROLE_ADMIN);
 
-        OrderItem item = returnRequest.getOrderItem();
+        OrderItem item = lockedReturn.getOrderItem();
+        settlementService.cancelSettlementForReturnedOrderItem(item.getId());
         if (item.getProduct() != null) {
             productStockService.restoreStock(item.getProduct().getId(), item.getQty());
         }
 
-        returnRequestRepository.save(returnRequest);
-        marketplaceNotificationService.notifyCustomerRefundCompleted(returnRequest);
+        if (refundAmount.compareTo(order.getTotal()) >= 0) {
+            order.setPaymentStatus(PaymentStatus.REFUNDED);
+            orderRepository.save(order);
+        }
 
-        return returnRequestMapper.toResponse(returnRequest);
+        returnRequestRepository.save(lockedReturn);
+        marketplaceNotificationService.notifyCustomerRefundCompleted(lockedReturn);
+
+        return returnRequestMapper.toResponse(lockedReturn);
+    }
+
+    private ReturnRequestResponse handleExistingRefundTransaction(
+            ReturnRequest returnRequest, RefundTransaction refundTransaction) {
+        if (refundTransaction.getStatus() == RefundTransactionStatus.COMPLETED) {
+            return returnRequestMapper.toResponse(returnRequest);
+        }
+        if (refundTransaction.getStatus() == RefundTransactionStatus.PENDING) {
+            throw new BadRequestException("Refund is already being processed");
+        }
+        throw new BadRequestException("Refund has already been attempted for this return");
     }
 
     private ReturnRequest loadReturnWithDetails(Long returnId) {

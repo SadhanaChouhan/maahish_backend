@@ -31,7 +31,7 @@ public class NotificationPreference extends AuditableEntity {
 
     @Column(name = "sms_enabled", nullable = false)
     @Builder.Default
-    private Boolean smsEnabled = true;
+    private Boolean smsEnabled = false;
 
     @Column(name = "in_app_enabled", nullable = false)
     @Builder.Default

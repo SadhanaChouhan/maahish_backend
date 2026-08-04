@@ -20,6 +20,8 @@ public interface SellerSettlementRepository extends JpaRepository<SellerSettleme
 
     boolean existsByOrderItemId(Long orderItemId);
 
+    Optional<SellerSettlement> findByOrderItemId(Long orderItemId);
+
     @EntityGraph(attributePaths = {"seller", "order", "orderItem", "orderItem.product"})
     Page<SellerSettlement> findBySettlementStatusOrderByCreatedAtDesc(SettlementStatus status, Pageable pageable);
 

@@ -9,7 +9,9 @@ import lombok.*;
 import java.math.BigDecimal;
 
 @Entity
-@Table(name = "refund_transactions")
+@Table(name = "refund_transactions", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_refund_transactions_return_request", columnNames = "return_request_id")
+})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -21,8 +23,8 @@ public class RefundTransaction extends AuditableEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "return_request_id", nullable = false)
+    @OneToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "return_request_id", nullable = false, unique = true)
     private ReturnRequest returnRequest;
 
     @Column(length = 100)

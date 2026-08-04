@@ -32,4 +32,14 @@ public final class AppConstants {
 
     public static final String CUSTOMER_PURCHASE_DENIED_MESSAGE =
             "Only customers can purchase products.";
+
+    public static final String BRAND_NAME = "Maahish";
+    public static final String BRAND_TAGLINE = "The Textile of Maheshwar";
+    public static final String BRAND_DOMAIN = "themaahish.com";
+    public static final String BRAND_WEBSITE_URL = "https://www.themaahish.com";
+    public static final String SUPPORT_EMAIL = "support@themaahish.com";
+    public static final String OFFICIAL_EMAIL = "themaahish@gmail.com";
+    public static final String SUPPORT_PHONE = "+91 72239 59729";
+    public static final String BRAND_ADDRESS = "Maheshwar, Madhya Pradesh, India 451224";
+    public static final String YOUTUBE_URL = "https://www.youtube.com/@TheMaahish";
 }

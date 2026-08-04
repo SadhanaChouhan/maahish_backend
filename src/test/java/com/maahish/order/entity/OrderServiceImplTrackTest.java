@@ -15,6 +15,7 @@ import com.maahish.order.service.OrderServiceImpl;
 import com.maahish.order.enums.OrderStatus;
 import com.maahish.order.dto.request.OrderTrackRequest;
 import com.maahish.config.OrderTrackingProperties;
+import com.maahish.config.PaymentRateLimitProperties;
 import com.maahish.payment.repository.PaymentRepository;
 import com.maahish.payment.enums.PaymentStatus;
 import com.maahish.order.repository.PendingCheckoutRepository;
@@ -22,6 +23,7 @@ import com.maahish.catalog.mapper.ProductMapper;
 import com.maahish.catalog.repository.ProductRepository;
 import com.maahish.catalog.service.ProductStockService;
 import com.maahish.auth.util.RateLimitService;
+import com.maahish.shipping.service.ShippingCalculationService;
 import com.maahish.infrastructure.payment.service.RazorpayService;
 import com.maahish.common.exception.ResourceNotFoundException;
 import com.maahish.settlement.service.SettlementService;
@@ -66,8 +68,10 @@ class OrderServiceImplTrackTest {
     @Mock private CheckoutFlowLogger checkoutFlowLogger;
     @Mock private ProductStockService productStockService;
     @Mock private RateLimitService rateLimitService;
+    @Mock private ShippingCalculationService shippingCalculationService;
 
     private OrderTrackingProperties orderTrackingProperties;
+    private PaymentRateLimitProperties paymentRateLimitProperties;
 
     private OrderServiceImpl orderService;
 
@@ -75,6 +79,8 @@ class OrderServiceImplTrackTest {
     void initProperties() {
         orderTrackingProperties = new OrderTrackingProperties();
         orderTrackingProperties.setMaxAttemptsPerHour(30);
+        orderTrackingProperties.setMaxAttemptsPerIpPerHour(20);
+        paymentRateLimitProperties = new PaymentRateLimitProperties();
         orderService = new OrderServiceImpl(
                 orderRepository,
                 pendingCheckoutRepository,
@@ -96,38 +102,64 @@ class OrderServiceImplTrackTest {
                 checkoutFlowLogger,
                 productStockService,
                 orderTrackingProperties,
-                rateLimitService
+                paymentRateLimitProperties,
+                rateLimitService,
+                shippingCalculationService
         );
     }
+
+    private static final String VALID_ORDER_NUMBER = "ORD2026072610001";
 
     @Test
     void trackOrder_wrongContact_throwsNotFound() {
         Order order = buildOrder("user@test.com", "9876543210");
-        when(orderRepository.findWithDetailsByOrderNumber("ORD123")).thenReturn(Optional.of(order));
+        when(orderRepository.findWithDetailsByOrderNumber(VALID_ORDER_NUMBER)).thenReturn(Optional.of(order));
 
         OrderTrackRequest request = new OrderTrackRequest();
-        request.setOrderNumber("ORD123");
+        request.setOrderNumber(VALID_ORDER_NUMBER);
         request.setContact("wrong@test.com");
 
-        assertThrows(ResourceNotFoundException.class, () -> orderService.trackOrder(request));
+        assertThrows(ResourceNotFoundException.class, () -> orderService.trackOrder(request, "127.0.0.1"));
     }
 
     @Test
     void trackOrder_validContact_returnsLimitedResponse() {
         Order order = buildOrder("user@test.com", "9876543210");
-        when(orderRepository.findWithDetailsByOrderNumber("ORD123")).thenReturn(Optional.of(order));
+        when(orderRepository.findWithDetailsByOrderNumber(VALID_ORDER_NUMBER)).thenReturn(Optional.of(order));
 
+        OrderTrackRequest request = new OrderTrackRequest();
+        request.setOrderNumber(VALID_ORDER_NUMBER);
+        request.setContact("user@test.com");
+
+        var response = orderService.trackOrder(request, "127.0.0.1");
+
+        assertEquals(VALID_ORDER_NUMBER, response.getOrderNumber());
+        assertEquals(OrderStatus.CONFIRMED, response.getStatus());
+        assertEquals(1, response.getItems().size());
+        assertEquals("Silk Saree", response.getItems().get(0).getProductName());
+        verify(rateLimitService).assertAllowed(eq("order-track-ip:127.0.0.1"), eq(20), any());
+        verify(rateLimitService).assertAllowed(eq("order-track:ord2026072610001"), eq(30), any());
+    }
+
+    @Test
+    void trackOrder_honeypotFilled_throwsNotFound() {
+        OrderTrackRequest request = new OrderTrackRequest();
+        request.setOrderNumber(VALID_ORDER_NUMBER);
+        request.setContact("user@test.com");
+        request.setWebsite("http://spam.example");
+
+        assertThrows(ResourceNotFoundException.class, () -> orderService.trackOrder(request, "127.0.0.1"));
+        verify(orderRepository, never()).findWithDetailsByOrderNumber(any());
+    }
+
+    @Test
+    void trackOrder_invalidOrderNumberFormat_throwsNotFound() {
         OrderTrackRequest request = new OrderTrackRequest();
         request.setOrderNumber("ORD123");
         request.setContact("user@test.com");
 
-        var response = orderService.trackOrder(request);
-
-        assertEquals("ORD123", response.getOrderNumber());
-        assertEquals(OrderStatus.CONFIRMED, response.getStatus());
-        assertEquals(1, response.getItems().size());
-        assertEquals("Silk Saree", response.getItems().get(0).getProductName());
-        verify(rateLimitService).assertAllowed(eq("order-track:ord123"), eq(30), any());
+        assertThrows(ResourceNotFoundException.class, () -> orderService.trackOrder(request, "127.0.0.1"));
+        verify(orderRepository, never()).findWithDetailsByOrderNumber(any());
     }
 
     private Order buildOrder(String email, String mobile) {
@@ -135,7 +167,7 @@ class OrderServiceImplTrackTest {
         Address address = Address.builder().mobile(mobile).build();
         OrderItem item = OrderItem.builder().productName("Silk Saree").qty(1).build();
         Order order = Order.builder()
-                .orderNumber("ORD123")
+                .orderNumber(VALID_ORDER_NUMBER)
                 .user(user)
                 .address(address)
                 .status(OrderStatus.CONFIRMED)

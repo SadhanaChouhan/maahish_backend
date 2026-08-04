@@ -3,7 +3,9 @@ com\maahish\auth\util\InMemoryRateLimitBackendTest.class
 com\maahish\catalog\entity\ProductStockServiceTest.class
 com\maahish\auth\service\OtpServiceImplTest.class
 com\maahish\infrastructure\payment\service\RazorpayServiceWebhookTest.class
+com\maahish\user\service\ProfileServiceImplTest.class
 com\maahish\returns\entity\ReturnRequestServiceImplEligibilityTest.class
 com\maahish\cart\entity\CartServiceImplTest.class
+com\maahish\catalog\entity\ProductServiceImplReviewTest.class
 com\maahish\auth\service\AuthServiceImplLoginRateLimitTest.class
 com\maahish\order\entity\OrderServiceImplTrackTest.class

@@ -1,6 +1,6 @@
 # Maven
-backend/target/
-backend/.mvn/wrapper/maven-wrapper.jar
+target/
+.mvn/wrapper/maven-wrapper.jar
 
 # IDE
 .idea/
@@ -16,22 +16,16 @@ Thumbs.db
 # Logs
 *.log
 
-# Env
+# Local secrets (never commit)
 .env
 .env.local
+.env.prod
 application-local.yml
-application-prod.yml
-application.yml
-application-example.yml
+
 # Uploads
 uploads/
 
-# Node (frontend)
-frontend/node_modules/
-frontend/dist/
-frontend/.env
-
 # Build
 *.class
-*.jar
-!backend/.mvn/wrapper/maven-wrapper.jar
+
+# Note: application.yml, application-prod.yml, and application-example.yml are tracked in git.

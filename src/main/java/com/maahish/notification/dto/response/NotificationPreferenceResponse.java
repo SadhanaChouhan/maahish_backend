@@ -12,6 +12,5 @@ import lombok.NoArgsConstructor;
 public class NotificationPreferenceResponse {
 
     private Boolean emailEnabled;
-    private Boolean smsEnabled;
     private Boolean inAppEnabled;
 }

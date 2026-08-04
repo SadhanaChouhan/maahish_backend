@@ -56,6 +56,10 @@ public class Product extends AuditableEntity {
     @Builder.Default
     private Integer stock = 0;
 
+    @Column(nullable = false)
+    @Builder.Default
+    private Integer reservedStock = 0;
+
     @Column(length = 100)
     @Builder.Default
     private String brand = "Maahish";

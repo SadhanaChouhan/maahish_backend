@@ -98,6 +98,27 @@ public class SettlementServiceImpl implements SettlementService {
     }
 
     @Override
+    @Transactional
+    public void cancelSettlementForReturnedOrderItem(Long orderItemId) {
+        settlementRepository.findByOrderItemId(orderItemId).ifPresent(settlement -> {
+            SettlementStatus status = settlement.getSettlementStatus();
+            if (status == SettlementStatus.PAID) {
+                log.error(
+                        "event=settlement_cancel_manual_required settlementId={} orderItemId={} "
+                                + "message=Settlement already paid — finance must recover from seller manually",
+                        settlement.getId(), orderItemId);
+                return;
+            }
+            if (status == SettlementStatus.PENDING || status == SettlementStatus.PROCESSING) {
+                settlement.setSettlementStatus(SettlementStatus.FAILED);
+                settlementRepository.save(settlement);
+                log.info("event=settlement_cancelled_return settlementId={} orderItemId={}",
+                        settlement.getId(), orderItemId);
+            }
+        });
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public PageResponse<SellerSettlementResponse> adminListSettlements(SettlementStatus status,
                                                                        Long sellerId,

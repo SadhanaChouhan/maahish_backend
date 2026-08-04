@@ -102,6 +102,10 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public AuthResponse verifyOtpAndActivate(VerifyOtpRequest request) {
         String email = request.getEmail().toLowerCase();
+        rateLimitService.assertAllowed(
+                "auth-verify-otp:" + email,
+                authRateLimitProperties.getMaxVerifyOtpAttemptsPerHour(),
+                Duration.ofHours(1));
         otpService.verifyOtp(email, request.getOtp(), request.getPurpose());
 
         if (request.getPurpose() == OtpPurpose.REGISTRATION) {
@@ -217,6 +221,10 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public void resetPassword(ResetPasswordRequest request) {
         String email = request.getEmail().toLowerCase();
+        rateLimitService.assertAllowed(
+                "auth-verify-otp:" + email,
+                authRateLimitProperties.getMaxVerifyOtpAttemptsPerHour(),
+                Duration.ofHours(1));
         otpService.verifyOtp(email, request.getOtp(), OtpPurpose.FORGOT_PASSWORD);
 
         User user = userRepository.findByEmail(email)

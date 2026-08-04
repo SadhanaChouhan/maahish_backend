@@ -14,6 +14,7 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDateTime;
 
 @Slf4j
 @Service
@@ -31,7 +32,11 @@ public class RazorpayService {
         return razorpayProperties.getKeyId();
     }
 
-    public RazorpayOrderResult createOrder(BigDecimal amountInr, String orderNumber) {
+    public String getCurrency() {
+        return razorpayProperties.getCurrency();
+    }
+
+    public RazorpayOrderResult createOrder(BigDecimal amountInr, String orderNumber, LocalDateTime expiresAt) {
         validateConfigured();
         try {
             int amountPaise = toPaise(amountInr);
@@ -45,6 +50,10 @@ public class RazorpayService {
             options.put("currency", razorpayProperties.getCurrency());
             options.put("receipt", orderNumber);
             options.put("notes", new JSONObject().put("maahish_order", orderNumber));
+            if (expiresAt != null) {
+                long expireBy = expiresAt.atZone(java.time.ZoneId.systemDefault()).toEpochSecond();
+                options.put("expire_by", expireBy);
+            }
 
             Order order = client.orders.create(options);
             String razorpayOrderId = order.get("id");
@@ -83,6 +92,41 @@ public class RazorpayService {
             log.error("event=razorpay_payment_verify_error razorpayOrderId={} error={}",
                     razorpayOrderId, ex.getMessage(), ex);
             throw new BadRequestException("Payment verification failed: " + ex.getMessage());
+        }
+    }
+
+    public CapturedPaymentDetails fetchCapturedPayment(String razorpayPaymentId) {
+        validateConfigured();
+        try {
+            RazorpayClient client = new RazorpayClient(
+                    razorpayProperties.getKeyId().trim(),
+                    razorpayProperties.getKeySecret().trim()
+            );
+            com.razorpay.Payment payment = client.payments.fetch(razorpayPaymentId.trim());
+            int amountPaise = payment.get("amount");
+            String currency = payment.get("currency");
+            String status = payment.get("status");
+            log.info("event=razorpay_payment_fetched paymentId={} amountPaise={} currency={} status={}",
+                    maskId(razorpayPaymentId), amountPaise, currency, status);
+            return new CapturedPaymentDetails(amountPaise, currency, status);
+        } catch (RazorpayException ex) {
+            log.error("event=razorpay_payment_fetch_failed paymentId={} error={}",
+                    maskId(razorpayPaymentId), ex.getMessage(), ex);
+            throw new BadRequestException("Failed to verify payment amount: " + ex.getMessage());
+        }
+    }
+
+    public void assertCapturedAmountMatches(BigDecimal expectedTotalInr, int capturedAmountPaise, String currency) {
+        int expectedPaise = toPaise(expectedTotalInr);
+        if (capturedAmountPaise != expectedPaise) {
+            log.error("event=razorpay_amount_mismatch expectedPaise={} capturedPaise={} currency={}",
+                    expectedPaise, capturedAmountPaise, currency);
+            throw new BadRequestException("Payment amount does not match order total");
+        }
+        if (!razorpayProperties.getCurrency().equalsIgnoreCase(currency)) {
+            log.error("event=razorpay_currency_mismatch expected={} captured={}",
+                    razorpayProperties.getCurrency(), currency);
+            throw new BadRequestException("Payment currency mismatch");
         }
     }
 
@@ -175,5 +219,11 @@ public class RazorpayService {
             String razorpayRefundId,
             int amountPaise,
             String rawResponse
+    ) {}
+
+    public record CapturedPaymentDetails(
+            int amountPaise,
+            String currency,
+            String status
     ) {}
 }

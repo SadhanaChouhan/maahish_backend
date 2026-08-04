@@ -10,6 +10,7 @@ import com.maahish.cart.repository.CartRepository;
 import com.maahish.cart.dto.response.CartResponse;
 import com.maahish.catalog.entity.Product;
 import com.maahish.catalog.mapper.ProductMapper;
+import com.maahish.catalog.service.ProductStockService;
 import com.maahish.catalog.repository.ProductRepository;
 import com.maahish.catalog.enums.ProductStatus;
 import com.maahish.common.exception.ResourceNotFoundException;
@@ -124,8 +125,9 @@ public class CartServiceImpl implements CartService {
     }
 
     private void validateStock(Product product, int quantity) {
-        if (product.getStock() < quantity) {
-            throw new BadRequestException("Insufficient stock. Available: " + product.getStock());
+        int available = ProductStockService.availableStock(product);
+        if (available < quantity) {
+            throw new BadRequestException("Insufficient stock. Available: " + available);
         }
     }
 
@@ -159,7 +161,7 @@ public class CartServiceImpl implements CartService {
                 .quantity(item.getQuantity())
                 .unitPrice(unitPrice)
                 .lineTotal(unitPrice.multiply(BigDecimal.valueOf(item.getQuantity())))
-                .availableStock(product.getStock())
+                .availableStock(ProductStockService.availableStock(product))
                 .build();
     }
 }

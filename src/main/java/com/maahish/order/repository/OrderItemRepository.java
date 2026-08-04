@@ -18,6 +18,16 @@ import java.util.List;
 @Repository
 public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
 
+    @Query("""
+            SELECT CASE WHEN COUNT(oi) > 0 THEN true ELSE false END FROM OrderItem oi
+            WHERE oi.product.id = :productId
+              AND oi.order.user.id = :userId
+              AND oi.order.status = com.maahish.order.enums.OrderStatus.DELIVERED
+              AND oi.order.paymentStatus = com.maahish.payment.enums.PaymentStatus.COMPLETED
+            """)
+    boolean existsDeliveredPurchaseByUserAndProduct(@Param("userId") Long userId,
+                                                    @Param("productId") Long productId);
+
     long countByProductSeller(Seller seller);
 
     @Query("""
