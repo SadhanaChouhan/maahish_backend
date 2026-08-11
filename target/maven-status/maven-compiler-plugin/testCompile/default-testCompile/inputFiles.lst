@@ -1,0 +1,11 @@
+C:\Users\Asus\checkout\maahish_backend\src\test\java\com\maahish\auth\service\AuthServiceImplLoginRateLimitTest.java
+C:\Users\Asus\checkout\maahish_backend\src\test\java\com\maahish\auth\service\AuthServiceImplRegisterTest.java
+C:\Users\Asus\checkout\maahish_backend\src\test\java\com\maahish\auth\service\OtpServiceImplTest.java
+C:\Users\Asus\checkout\maahish_backend\src\test\java\com\maahish\auth\util\InMemoryRateLimitBackendTest.java
+C:\Users\Asus\checkout\maahish_backend\src\test\java\com\maahish\cart\entity\CartServiceImplTest.java
+C:\Users\Asus\checkout\maahish_backend\src\test\java\com\maahish\catalog\entity\ProductServiceImplReviewTest.java
+C:\Users\Asus\checkout\maahish_backend\src\test\java\com\maahish\catalog\entity\ProductStockServiceTest.java
+C:\Users\Asus\checkout\maahish_backend\src\test\java\com\maahish\infrastructure\payment\service\RazorpayServiceWebhookTest.java
+C:\Users\Asus\checkout\maahish_backend\src\test\java\com\maahish\order\entity\OrderServiceImplTrackTest.java
+C:\Users\Asus\checkout\maahish_backend\src\test\java\com\maahish\returns\entity\ReturnRequestServiceImplEligibilityTest.java
+C:\Users\Asus\checkout\maahish_backend\src\test\java\com\maahish\user\service\ProfileServiceImplTest.java
