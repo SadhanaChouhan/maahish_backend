@@ -10,40 +10,31 @@
 # ENTRYPOINT ["java", "-jar", "app.jar"]
 
 # Build stage
-# FROM maven:3.9.9-eclipse-temurin-21 AS builder
 
-# WORKDIR /app
+# Stage 1: Build the application
+FROM maven:3.9-eclipse-temurin-21 AS build
 
-# COPY pom.xml .
-# COPY src ./src
+WORKDIR /app
 
-# RUN mvn clean package -DskipTests
+COPY pom.xml .
 
-# # Runtime stage
-# FROM eclipse-temurin:21-jre-alpine
+RUN mvn dependency:go-offline -DskipTests
 
-# WORKDIR /app
+COPY src ./src
 
-# RUN addgroup -S maahish && adduser -S maahish -G maahish
+RUN mvn clean package -DskipTests
 
-# COPY --from=builder /app/target/maahish-backend-*.jar app.jar
 
-# RUN chown maahish:maahish app.jar
-
-# USER maahish
-
-# EXPOSE 8080
-
-# ENTRYPOINT ["java", "-jar", "app.jar"]
-
+# Stage 2: Run the application
 FROM eclipse-temurin:21-jre-alpine
 
 WORKDIR /app
 
 RUN addgroup -S maahish && adduser -S maahish -G maahish
+
 USER maahish
 
-COPY target/maahish-backend-*.jar app.jar
+COPY --from=build /app/target/*.jar app.jar
 
 EXPOSE 8080
 
