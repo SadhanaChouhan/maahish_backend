@@ -67,7 +67,7 @@ public class ProductionStartupValidator implements ApplicationRunner {
 
     private void validateRazorpay() {
         if (!StringUtils.hasText(razorpayProperties.getKeyId())
-                || !razorpayProperties.getKeyId().startsWith("rzp_live_")) {
+                || !razorpayProperties.getKeyId().startsWith("rzp_test_")) {
             throw new IllegalStateException("RAZORPAY_KEY_ID must be a live key (rzp_live_...) in production");
         }
         if (!StringUtils.hasText(razorpayProperties.getKeySecret())) {
