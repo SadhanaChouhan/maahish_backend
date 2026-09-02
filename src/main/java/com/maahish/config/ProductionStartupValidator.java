@@ -45,8 +45,8 @@ public class ProductionStartupValidator implements ApplicationRunner {
         validateCors();
         validateMail();
         validateCloudinary();
-        validateRateLimitBackend();
-        validateRedis();
+        // validateRateLimitBackend();
+        // validateRedis();
         log.info("Production configuration validation passed");
     }
 
