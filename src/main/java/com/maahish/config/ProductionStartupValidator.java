@@ -6,7 +6,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -21,13 +20,9 @@ public class ProductionStartupValidator implements ApplicationRunner {
     private final JwtProperties jwtProperties;
     private final RazorpayProperties razorpayProperties;
     private final CloudinaryProperties cloudinaryProperties;
-    private final StringRedisTemplate redisTemplate;
 
     @Value("${maahish.cors.allowed-origins:}")
     private String allowedOrigins;
-
-    @Value("${maahish.rate-limit.backend:}")
-    private String rateLimitBackend;
 
     @Value("${spring.mail.host:}")
     private String mailHost;
@@ -45,8 +40,6 @@ public class ProductionStartupValidator implements ApplicationRunner {
         validateCors();
         validateMail();
         validateCloudinary();
-        // validateRateLimitBackend();
-        // validateRedis();
         log.info("Production configuration validation passed");
     }
 
@@ -106,26 +99,6 @@ public class ProductionStartupValidator implements ApplicationRunner {
         }
         if (!StringUtils.hasText(cloudinaryProperties.getApiSecret())) {
             throw new IllegalStateException("CLOUDINARY_API_SECRET must be set in production");
-        }
-    }
-
-    private void validateRateLimitBackend() {
-        if (!"redis".equalsIgnoreCase(rateLimitBackend)) {
-            throw new IllegalStateException("maahish.rate-limit.backend must be 'redis' in production");
-        }
-    }
-
-    private void validateRedis() {
-        try (var connection = redisTemplate.getRequiredConnectionFactory().getConnection()) {
-            String pong = connection.ping();
-            if (!"PONG".equalsIgnoreCase(pong)) {
-                throw new IllegalStateException("Redis ping did not return PONG in production");
-            }
-        } catch (IllegalStateException ex) {
-            throw ex;
-        } catch (Exception ex) {
-            throw new IllegalStateException(
-                    "Redis is required in production but is unavailable: " + ex.getMessage(), ex);
         }
     }
 }

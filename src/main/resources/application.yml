@@ -32,8 +32,6 @@ management:
       enabled: true
     mail:
       enabled: true
-    redis:
-      enabled: false
 
 springdoc:
   api-docs:
@@ -80,8 +78,6 @@ maahish:
   pagination:
     default-size: 20
     max-size: 100
-  rate-limit:
-    backend: memory
 
 cloudinary:
   cloud-name: ${CLOUDINARY_CLOUD_NAME}

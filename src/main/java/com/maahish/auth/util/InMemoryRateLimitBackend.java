@@ -2,7 +2,6 @@ package com.maahish.auth.util;
 
 import com.maahish.common.exception.BadRequestException;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -13,7 +12,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Component
-@ConditionalOnProperty(name = "maahish.rate-limit.backend", havingValue = "memory", matchIfMissing = true)
 public class InMemoryRateLimitBackend implements RateLimitBackend {
 
     private final Map<String, Deque<Instant>> buckets = new ConcurrentHashMap<>();
