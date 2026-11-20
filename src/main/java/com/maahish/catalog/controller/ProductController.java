@@ -49,9 +49,11 @@ public class ProductController {
             @RequestParam(defaultValue = AppConstants.DEFAULT_SORT_DIR) String sortDir,
             @RequestParam(defaultValue = AppConstants.DEFAULT_PAGE_NUMBER) int page,
             @RequestParam(defaultValue = AppConstants.DEFAULT_PAGE_SIZE) int size) {
+        log.info("inside product search");
 
         PageResponse<ProductSummaryResponse> result = productService.searchProducts(
                 keyword, categoryId, fabricTypeId, color, occasion, minPrice, maxPrice, sortBy, sortDir, page, size);
+        
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 
