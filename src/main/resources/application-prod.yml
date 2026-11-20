@@ -80,3 +80,8 @@ logging:
   level:
     com.maahish: INFO
     org.springframework.security: WARN
+
+app:
+  admin:
+    email: ${ADMIN_EMAIL}
+    password: ${ADMIN_PASSWORD}

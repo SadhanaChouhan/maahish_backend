@@ -38,3 +38,8 @@ cloudinary:
   api-key: ${CLOUDINARY_API_KEY:961554174281855}
   api-secret: ${CLOUDINARY_API_SECRET:iX39EDS-HNz1KZUbsatNxmhqs_E}
   folder: maahish/products
+
+app:
+  admin:
+    email: ${ADMIN_EMAIL}
+    password: ${ADMIN_PASSWORD}
