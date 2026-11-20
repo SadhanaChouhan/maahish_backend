@@ -17,6 +17,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -26,6 +27,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 
+@Slf4j
 @RestController
 @RequestMapping("/v1/products")
 @RequiredArgsConstructor
@@ -49,7 +51,7 @@ public class ProductController {
             @RequestParam(defaultValue = AppConstants.DEFAULT_SORT_DIR) String sortDir,
             @RequestParam(defaultValue = AppConstants.DEFAULT_PAGE_NUMBER) int page,
             @RequestParam(defaultValue = AppConstants.DEFAULT_PAGE_SIZE) int size) {
-        log.info("inside product search");
+        log.info("\"inside product search\"");
 
         PageResponse<ProductSummaryResponse> result = productService.searchProducts(
                 keyword, categoryId, fabricTypeId, color, occasion, minPrice, maxPrice, sortBy, sortDir, page, size);
