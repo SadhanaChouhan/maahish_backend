@@ -85,3 +85,7 @@ app:
   admin:
     email: ${ADMIN_EMAIL}
     password: ${ADMIN_PASSWORD}
+
+resend:
+  api-key: ${RESEND_API_KEY}
+  from: ${RESEND_FROM}
