@@ -1,6 +1,5 @@
 package com.maahish.config;
 
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -12,7 +11,6 @@ import java.util.Arrays;
 import java.util.List;
 
 @Configuration
-@Slf4j
 public class CorsConfig {
 
     @Value("${maahish.cors.allowed-origins}")
@@ -25,7 +23,6 @@ public class CorsConfig {
                 .map(String::trim)
                 .toList();
         config.setAllowedOrigins(origins);
-        log.info("CORS ALLOWED ORIGINS: " + origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of(
                 "Content-Type",
