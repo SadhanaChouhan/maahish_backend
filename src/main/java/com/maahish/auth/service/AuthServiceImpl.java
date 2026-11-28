@@ -38,6 +38,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -241,6 +242,20 @@ public class AuthServiceImpl implements AuthService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         refreshTokenRepository.deleteByUser(user);
+    }
+
+    @Override
+    @Transactional
+    public void logoutByRefreshToken(String refreshTokenValue) {
+        if (!StringUtils.hasText(refreshTokenValue)) {
+            return;
+        }
+        refreshTokenRepository.findByToken(refreshTokenValue).ifPresent(refreshToken -> {
+            User user = refreshToken.getUser();
+            if (user != null) {
+                refreshTokenRepository.deleteByUser(user);
+            }
+        });
     }
 
     private AuthResponse buildAuthResponse(User user) {

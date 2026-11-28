@@ -15,6 +15,8 @@ import com.maahish.auth.util.RateLimitService;
 import com.maahish.auth.repository.RefreshTokenRepository;
 import com.maahish.seller.repository.SellerRepository;
 import com.maahish.seller.service.SellerService;
+import com.maahish.auth.entity.RefreshToken;
+import com.maahish.user.entity.User;
 import com.maahish.user.repository.UserRepository;
 
 import org.junit.jupiter.api.Test;
@@ -29,8 +31,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
+import java.util.Optional;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceImplLoginRateLimitTest {
@@ -96,5 +101,23 @@ class AuthServiceImplLoginRateLimitTest {
 
         assertThrows(BadRequestException.class, () -> authService.register(request));
         verify(rateLimitService).assertAllowed(eq("auth-register:user@test.com"), eq(5), any());
+    }
+
+    @Test
+    void logoutByRefreshToken_revokesEverySessionForThatUser() {
+        User user = User.builder().id(4L).email("user@test.com").name("Test").password("secret").build();
+        RefreshToken token = RefreshToken.builder().token("refresh-1").user(user).build();
+        when(refreshTokenRepository.findByToken("refresh-1")).thenReturn(Optional.of(token));
+
+        authService.logoutByRefreshToken("refresh-1");
+
+        verify(refreshTokenRepository).deleteByUser(user);
+    }
+
+    @Test
+    void logoutByRefreshToken_blankValueDoesNotTouchTheDatabase() {
+        authService.logoutByRefreshToken(" ");
+
+        verify(refreshTokenRepository, never()).findByToken(any());
     }
 }

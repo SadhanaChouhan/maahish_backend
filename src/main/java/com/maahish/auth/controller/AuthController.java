@@ -2,9 +2,10 @@ package com.maahish.auth.controller;
 
 import com.maahish.common.constants.AppConstants;
 import com.maahish.common.dto.response.ApiResponse;
+import com.maahish.common.exception.MaahishException;
 import com.maahish.common.exception.UnauthorizedException;
 import com.maahish.common.security.AuthCookieService;
-import com.maahish.common.security.SecurityUtil;
+import com.maahish.common.security.UserPrincipal;
 import com.maahish.auth.dto.request.ForgotPasswordRequest;
 import com.maahish.auth.dto.request.LoginRequest;
 import com.maahish.auth.dto.request.RefreshTokenRequest;
@@ -23,6 +24,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -100,24 +103,43 @@ public class AuthController {
 
     @PostMapping("/logout")
     @Operation(summary = "Logout and revoke refresh tokens")
-    public ResponseEntity<ApiResponse<Void>> logout(HttpServletResponse response) {
-        authService.logout(SecurityUtil.getCurrentUserId());
-        authCookieService.clearAuthCookies(response);
+    public ResponseEntity<ApiResponse<Void>> logout(HttpServletRequest request, HttpServletResponse response) {
+        try {
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            if (authentication != null && authentication.getPrincipal() instanceof UserPrincipal principal) {
+                authService.logout(principal.getId());
+            } else {
+                authService.logoutByRefreshToken(readRefreshCookie(request));
+            }
+        } catch (MaahishException ex) {
+            log.debug("Logout token revoke skipped: {}", ex.getMessage());
+        } finally {
+            authCookieService.clearAuthCookies(response);
+        }
         return ResponseEntity.ok(ApiResponse.success("Logged out successfully"));
     }
 
     private String resolveRefreshToken(HttpServletRequest httpRequest, RefreshTokenRequest request) {
-        if (httpRequest.getCookies() != null) {
-            for (Cookie cookie : httpRequest.getCookies()) {
-                if (AppConstants.REFRESH_TOKEN_COOKIE.equals(cookie.getName())
-                        && StringUtils.hasText(cookie.getValue())) {
-                    return cookie.getValue();
-                }
-            }
+        String cookieToken = readRefreshCookie(httpRequest);
+        if (StringUtils.hasText(cookieToken)) {
+            return cookieToken;
         }
         if (request != null && StringUtils.hasText(request.getRefreshToken())) {
             return request.getRefreshToken();
         }
         throw new UnauthorizedException("Refresh token required");
+    }
+
+    private String readRefreshCookie(HttpServletRequest httpRequest) {
+        if (httpRequest.getCookies() == null) {
+            return null;
+        }
+        for (Cookie cookie : httpRequest.getCookies()) {
+            if (AppConstants.REFRESH_TOKEN_COOKIE.equals(cookie.getName())
+                    && StringUtils.hasText(cookie.getValue())) {
+                return cookie.getValue();
+            }
+        }
+        return null;
     }
 }
